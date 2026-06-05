@@ -1,7 +1,9 @@
 import uuid
 from django.db import models
+from django.contrib.auth.models import AbstractUser
 
-class Usuario(models.Model):
+### MODELOS DE DATOS PARA GESTIÓN ACADÉMICA ###
+class Usuario(AbstractUser):
     ROL_CHOICES = [
         ('acudiente', 'Acudiente'),
         ('docente', 'Docente'),
@@ -9,16 +11,19 @@ class Usuario(models.Model):
         ('estudiante', 'Estudiante'),
     ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    nombre = models.CharField(max_length=100)
-    apellido = models.CharField(max_length=100)
-    email = models.EmailField(unique=True)
-    password = models.CharField(max_length=255)
     rol = models.CharField(max_length=20, choices=ROL_CHOICES)
-    activo = models.BooleanField(default=True)
+
+    # AbstractUser ya incluye estos campos, por eso los eliminamos:
+    # nombre → first_name
+    # apellido → last_name
+    # email → email
+    # password → password (con hash automático)
+    # activo → is_active
+
+    REQUIRED_FIELDS = ['first_name', 'last_name', 'rol', 'email']
 
     def __str__(self):
-        return f"{self.nombre} {self.apellido}"
-
+        return f"{self.first_name} {self.last_name}"
 
 class Acudiente(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -127,7 +132,7 @@ class Calificacion(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     actividad_evaluativa = models.ForeignKey(ActividadEvaluativa, on_delete=models.CASCADE, related_name='calificaciones')
     estudiante = models.ForeignKey(Estudiante, on_delete=models.CASCADE, related_name='calificaciones')
-    valor = models.DecimalField(max_digits=5, decimal_places=2)
+    valor = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
 
     class Meta:
         unique_together = ('actividad_evaluativa', 'estudiante') # Evita duplicados combinando los dos campos
@@ -171,9 +176,9 @@ class DetalleAsistencia(models.Model):
 class Observacion(models.Model):
     TIPO_CHOICES = [
         ('academica', 'Académica'),
-        ('convivencia', 'Convivencia'),
-        ('asistencia', 'Asistencia'),
-        ('otro', 'Otro'),
+        ('disciplinaria', 'Disciplinaria'),
+        ('seguimiento', 'Seguimiento'),
+        ('logro', 'Logro'),
     ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     estudiante = models.ForeignKey(Estudiante, on_delete=models.CASCADE, related_name='observaciones')
@@ -182,6 +187,7 @@ class Observacion(models.Model):
     descripcion = models.TextField()
     es_positiva = models.BooleanField(default=False)
     fecha_registro = models.DateTimeField(auto_now_add=True)
+    curso = models.ForeignKey(Curso, on_delete=models.SET_NULL, null=True, related_name='observaciones')
 
     def __str__(self):
         return f"{self.estudiante} - {self.tipo}"
