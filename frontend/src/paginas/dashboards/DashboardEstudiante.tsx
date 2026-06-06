@@ -11,7 +11,7 @@ import { useAuth } from "../../context/AuthContext";
 
 /* ─── TIPOS ────────────────────────────────────────────────────── */
 type EstudiantePerfil = {
-  id: number;
+  id: string;
   nombre: string;
   grado: string;
   jornada: string;
@@ -256,7 +256,7 @@ function PanelAsistencia({ estudianteId, asistenciaFallback, isMobile }: { estud
 }
 
 /* ─── PANEL OBSERVACIONES ─────────────────────────────────────── */
-function PanelObservaciones({ estudianteId, isMobile }: { estudianteId: number | null; isMobile: boolean }) {
+function PanelObservaciones({ estudianteId, isMobile }: { estudianteId: string | null; isMobile: boolean }) {
   const { getObservacionesEstudiante } = useGESTA();
   const obs = estudianteId !== null ? getObservacionesEstudiante(estudianteId) : [];
 

@@ -1,5 +1,6 @@
 import { useState,useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { useGESTA } from "../../context/GESTAContext";
 import {
   C, S, Semaforo, Avatar, Sidebar, BottomNav,
@@ -445,8 +446,9 @@ export default function IngresoNotas() {
     }
   }, []);
 
-  // TODO: Reemplazar con el nombre del docente obtenido del contexto de autenticación
-  const nombreDocente = "Docente";
+  // Datos del usuario autenticado
+  const { user } = useAuth();
+  const nombreDocente = user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.username || "Docente";
 
   const ir = (ruta: string, id?: string) => { if (id) setNavActivo(id); navigate(`/dashboard/${ruta}`); };
 

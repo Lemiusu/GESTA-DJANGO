@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { useGESTA } from "../../context/GESTAContext";
 import {
   C, S, SM, Semaforo, Avatar, Sidebar, BottomNav,
@@ -9,7 +10,7 @@ import { estudiantesAPI } from "../../services/api";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
 interface Estudiante {
-  id: number;
+  id: string;
   nombre: string;
   grado: string;
   promedio: number;
@@ -379,9 +380,8 @@ export default function EstudiantesCoordinador() {
   }, []);
 
   /* ── Nombre del usuario (debe venir de la sesión / API) ── */
-  // TODO: Reemplazar con datos del usuario autenticado cuando el backend esté conectado
-  const nombreUsuario = "";
-  const inicialesUsuario = "";
+  const { user } = useAuth();
+  const nombreUsuario = user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.username || "Usuario";
 
   /* ── Estados de navegación y filtros ── */
   const [navActivo,    setNavActivo]    = useState("estudiantes");

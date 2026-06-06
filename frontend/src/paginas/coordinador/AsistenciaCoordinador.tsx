@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import {
   C, S, Semaforo, Avatar, Sidebar, BottomNav,
   NAV_COORDINADOR, BOTTOM_NAV_COORDINADOR,
@@ -31,10 +32,10 @@ interface GradoAsistencia {
 export default function AsistenciaCoordinador() {
   const navigate   = useNavigate();
   const isMobile   = isMobileWidth();
+  const { user } = useAuth();
 
   /* ── Nombre del usuario (debe venir de la sesión / API) ── */
-  // TODO: Reemplazar con datos del usuario autenticado cuando el backend esté conectado
-  const nombreUsuario = "";
+  const nombreUsuario = user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.username || "Usuario";
 
   const [navActivo,    setNavActivo]    = useState("asistencia");
   const [gradosAsistencia, setGradosAsistencia] = useState<GradoAsistencia[]>([]);

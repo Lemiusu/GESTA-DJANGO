@@ -245,10 +245,10 @@ export const calificacionesAPI = {
 };
 
 export const observacionesAPI = {
-  getObservacionesEstudiante: async (estudianteId: number) => {
+  getObservacionesEstudiante: async (estudianteId: string) => {
     return request<any[]>(`/observaciones/${buildQuery({ estudiante: estudianteId })}`);
   },
-  crearObservacion: async (observacion: { estudianteId: number; tipo: string; desc: string; autor: string; rol: string }) => {
+  crearObservacion: async (observacion: { estudianteId: string; tipo: string; desc: string; autor: string; rol: string }) => {
     return request<any>("/observaciones/", {
       method: "POST",
       body: JSON.stringify({ estudiante: observacion.estudianteId, tipo: observacion.tipo, descripcion: observacion.desc, es_positiva: false }),
@@ -266,7 +266,7 @@ export const mensajesAPI = {
   getMensajesPara: async (rol: string) => {
     return request<any[]>(`/mensajes/${buildQuery({ para: rol })}`);
   },
-  marcarLeido: async (mensajeId: number) => {
+  marcarLeido: async (mensajeId: string | number) => {
     return request<any>(`/mensajes/${mensajeId}/leido/`, {
       method: "PATCH",
     });
@@ -400,6 +400,9 @@ export const coordinadorAPI = {
       const rojo = cursos.reduce((s: number, c: any) => s + c.rojo, 0);
       return { grado: g.nombre, total, verde, amarillo, rojo, cursos };
     });
+  },
+  getObservador: async () => {
+    return request<any>("/coordinador/observador/");
   },
 };
 

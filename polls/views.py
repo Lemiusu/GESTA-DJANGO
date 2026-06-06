@@ -562,23 +562,41 @@ class MensajesView(APIView):
     def get(self, request):
         para = request.query_params.get('para')
         queryset = Mensaje.objects.select_related('remitente').prefetch_related('destinatarios__destinatario').order_by('-enviado_en')
+        
+        # Filtrar solo mensajes del usuario actual como destinatario
+        queryset = queryset.filter(destinatarios__destinatario=request.user)
+        
+        # Opcionalmente filtrar por rol del usuario
         if para:
             queryset = queryset.filter(destinatarios__destinatario__rol=para)
 
         mensajes = []
+        # Usar set para evitar duplicados
+        mensaje_ids = set()
+        
         for mensaje in queryset.distinct():
+            if mensaje.id in mensaje_ids:
+                continue  # Skip duplicates
+            mensaje_ids.add(mensaje.id)
+            
             destinatario_rel = mensaje.destinatarios.filter(destinatario=request.user).first()
+            # Detectar tipo de mensaje basado en el asunto
+            msg_type = 'mensaje'
+            if 'Alerta' in mensaje.asunto or '⚠' in mensaje.asunto:
+                msg_type = 'alerta'
+            elif 'Noticia' in mensaje.asunto or 'notificación' in mensaje.asunto.lower():
+                msg_type = 'notificacion'
+            
             mensajes.append({
                 'id': mensaje.id,
                 'asunto': mensaje.asunto,
                 'contenido': mensaje.contenido,
-                'remitente': f'{mensaje.remitente.first_name} {mensaje.remitente.last_name}',
-                'hora': mensaje.enviado_en.isoformat(),
-                'destinatarios': [
-                    f'{d.destinatario.first_name} {d.destinatario.last_name}'
-                    for d in mensaje.destinatarios.all()
-                ],
+                'de': f'{mensaje.remitente.first_name} {mensaje.remitente.last_name}',
+                'rolDe': mensaje.remitente.rol or 'usuario',
+                'para': 'todos',  # Placeholder - ideally should be determined from destinatarios
+                'fecha': mensaje.enviado_en.isoformat(),
                 'leido': destinatario_rel.leido if destinatario_rel else False,
+                'tipo': msg_type,
             })
         return Response(mensajes)
 

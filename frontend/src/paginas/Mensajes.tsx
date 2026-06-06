@@ -8,7 +8,7 @@ import {
   TIPO_MSG_META,
   IcoHome, IcoCheck, IcoEdit, IcoEye, IcoMsg, IcoUsers,
 } from "../context/shared";
-import { mensajesAPI, estudiantesAPI } from "../services/api";
+import { mensajesAPI, estudiantesAPI, alertasAPI } from "../services/api";
 
 /* ─── CONFIG POR ROL ─────────────────────────────────────────────── */
 // CONFIG LEGACY - Ahora se construye dinámicamente desde AuthContext
@@ -137,7 +137,7 @@ function ModalCrearAlerta({
   const puedeContinuar = estudianteId !== null && descripcion.trim().length > 0;
 
   // Construye los mensajes que se enviarán: uno para docente, uno para acudiente
-  function construirMensajes(): Omit<Mensaje, "id">[] {
+  function construirMensajes(): (Omit<Mensaje, "id"> & { estudianteId?: number })[] {
     if (!est) return [];
     // TODO: Reemplazar con alertasAPI.crearAlerta() para crear alerta en backend
     const asunto  = `⚠ Alerta ${est.nombre} (Grado ${est.grado})`;
@@ -153,6 +153,7 @@ function ModalCrearAlerta({
         fecha: "Ahora",
         leido: false,
         tipo: "alerta",
+        estudianteId: est.id,
       },
       // Notificación al acudiente
       {
@@ -163,6 +164,7 @@ function ModalCrearAlerta({
         fecha: "Ahora",
         leido: false,
         tipo: "alerta",
+        estudianteId: est.id,
       },
     ];
   }
@@ -386,8 +388,8 @@ export default function Mensajes() {
 
   // Dinámico: obtener nombre del usuario autenticado
   const config = {
-    nombre: user ? `${user.first_name} ${user.last_name}` : "Usuario",
-    sub: user?.id ?? "",
+    nombre: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.username || "Usuario",
+    sub: user?.rol ? user.rol.charAt(0).toUpperCase() + user.rol.slice(1) : rol.charAt(0).toUpperCase() + rol.slice(1),
     navGroups: rol === "coordinador" ? NAV_COORDINADOR : rol === "acudiente" ? NAV_ACUDIENTE : NAV_DOCENTE,
     rolFiltro: rol,
     puedeEnviar: rol !== "acudiente",
@@ -422,6 +424,9 @@ export default function Mensajes() {
   // ── Estado dinámico para estudiantes de alerta ──
   const [estudiantesAlerta, setEstudiantesAlerta] = useState<{ id:number; nombre:string; grado:string; docente:string; acudiente:string }[]>([]);
 
+  // ── Cargar mensajes del backend cuando se monta el componente ──
+  const { cargarDatosIniciales } = useGESTA();
+
   useEffect(() => {
     const cargarEstudiantes = async () => {
       try {
@@ -433,6 +438,18 @@ export default function Mensajes() {
     };
     cargarEstudiantes();
   }, []);
+
+  // ── Cargar mensajes desde el backend al montar o cambiar rol ──
+  useEffect(() => {
+    cargarDatosIniciales(rol);
+  }, [rol]);
+
+  // ── Marcar mensaje como leído cuando se selecciona ──
+  useEffect(() => {
+    if (seleccionado && !seleccionado.leido) {
+      marcarMensajeLeido(seleccionado.id);
+    }
+  }, [seleccionado]);
 
   const filtered = filtro === "todos"
     ? todos
@@ -485,15 +502,32 @@ export default function Mensajes() {
       setEnviando(true);
       // Enviar alertas al backend
       for (const msg of mensajes) {
+        // Primero enviar como mensaje
         await mensajesAPI.enviarMensajePorRol({
           destinatarios: msg.para,
           asunto: msg.asunto,
           contenido: msg.contenido,
         });
+        // Luego crear la alerta en la BD
+        const estudianteId = (msg as any).estudianteId;
+        if (estudianteId) {
+          try {
+            await alertasAPI.crearAlerta({
+              estudianteId,
+              tipo: "academica",
+              motivo: msg.contenido,
+              responsable: config.nombre,
+            });
+          } catch (alertErr) {
+            console.warn("Error creando alerta en BD:", alertErr);
+          }
+        }
         await agregarMensaje(msg);
       }
       
       setShowModalAlerta(false);
+      // Recargar datos para que aparezcan las alertas
+      await cargarDatosIniciales(rol);
       setToast(`Alerta enviada a ${mensajes.length} destinatario(s)`);
       setFiltro("alerta");
     } catch (error) {
@@ -714,10 +748,11 @@ export default function Mensajes() {
       {!isMobile && (
         <Sidebar
           navGroups={config.navGroups}
-          navActivo={`mensajes-${rol}`}
+          navActivo="mensajes"
           onNav={ir}
           usuario={config.nombre}
           subUsuario={config.sub}
+          mensajesNoLeidos={noLeidos}
         />
       )}
 

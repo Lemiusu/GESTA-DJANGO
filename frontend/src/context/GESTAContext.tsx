@@ -23,8 +23,8 @@ export interface Curso {
 }
 
 export interface Observacion {
-  id: number;
-  estudianteId: number;
+  id: string;
+  estudianteId: string;
   tipo: string;
   desc: string;
   fecha: string;
@@ -33,7 +33,7 @@ export interface Observacion {
 }
 
 export interface Mensaje {
-  id: number;
+  id: string | number;
   destinatarios?: string[];
   de: string;
   rolDe: string;
@@ -97,13 +97,13 @@ interface GESTAContextType {
   observaciones: Observacion[];
   loadingObservaciones: boolean;
   agregarObservacion: (obs: Omit<Observacion, "id">) => Promise<void>;
-  getObservacionesEstudiante: (estudianteId: number) => Observacion[];
+  getObservacionesEstudiante: (estudianteId: string) => Observacion[];
 
   // Mensajes
   mensajes: Mensaje[];
   loadingMensajes: boolean;
   agregarMensaje: (msg: Omit<Mensaje, "id">) => Promise<void>;
-  marcarMensajeLeido: (id: number) => Promise<void>;
+  marcarMensajeLeido: (id: string | number) => Promise<void>;
   getMensajesPara: (rol: string) => Mensaje[];
   getMensajesNoLeidos: (rol: string) => number;
 
@@ -203,7 +203,7 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  function getObservacionesEstudiante(estudianteId: number) {
+  function getObservacionesEstudiante(estudianteId: string) {
     return observaciones.filter(o => o.estudianteId === estudianteId);
   }
 
@@ -229,7 +229,7 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const marcarMensajeLeido = useCallback(async (id: number) => {
+  const marcarMensajeLeido = useCallback(async (id: string | number) => {
     try {
       await mensajesAPI.marcarLeido(id);
       setMensajes(prev => prev.map(m => m.id === id ? { ...m, leido: true } : m));

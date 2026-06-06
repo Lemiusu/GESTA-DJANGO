@@ -76,8 +76,9 @@ export function Semaforo({ nivel, label, grande }: { nivel:string; label?:string
 }
 
 /* ─── COMPONENTE AVATAR ───────────────────────────────────────── */
-export function Avatar({ nombre, size = 28 }: { nombre:string; size?:number }) {
-  const initials = nombre.split(" ").map((w:string) => w[0]).slice(0,2).join("");
+export function Avatar({ nombre, size = 28 }: { nombre?: string | null; size?:number }) {
+  const safeNombre = nombre || "?";
+  const initials = safeNombre.split(" ").map((w:string) => w[0]).slice(0,2).join("");
   return (
     <div style={{ width:size, height:size, borderRadius:"50%", background:C.blueLight, color:C.blueText, fontSize:size*0.38, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
       {initials}
@@ -215,7 +216,7 @@ export const NAV_DOCENTE: NavGroup[] = [
     { id:"observador",     label:"Observador",     ruta:"observador-docente" },
   ]},
   { section:"Comunicacion", items:[
-    { id:"mensajes", label:"Mensajes y Alertas", ruta:"mensajes-docente", badge:3 },
+    { id:"mensajes", label:"Mensajes y Alertas", ruta:"mensajes-docente" },
   ]},
 ];
 
@@ -228,7 +229,7 @@ export const NAV_COORDINADOR: NavGroup[] = [
     { id:"observador",     label:"Observador",     ruta:"observador-coordinador" },
   ]},
   { section:"Comunicacion", items:[
-    { id:"mensajes", label:"Mensajes y Alertas", ruta:"mensajes-coordinador", badge:3 },
+    { id:"mensajes", label:"Mensajes y Alertas", ruta:"mensajes-coordinador" },
   ]},
 ];
 
@@ -263,13 +264,14 @@ export const BOTTOM_NAV_ACUDIENTE = [
 
 /* ─── COMPONENTE SIDEBAR REUTILIZABLE ────────────────────────── */
 export function Sidebar({
-  navGroups, navActivo, onNav, usuario, subUsuario,
+  navGroups, navActivo, onNav, usuario, subUsuario, mensajesNoLeidos = 0,
 }: {
   navGroups: NavGroup[];
   navActivo: string;
   onNav: (ruta:string, id:string) => void;
   usuario: string;
   subUsuario: string;
+  mensajesNoLeidos?: number;
 }) {
   return (
     <aside style={S.sidebar}>
@@ -298,7 +300,11 @@ export function Sidebar({
                 }}
               >
                 {item.label}
-                {item.badge != null && (
+                {item.id === "mensajes" && mensajesNoLeidos > 0 ? (
+                  <span style={{ marginLeft:"auto", background:C.redLight, color:C.red, fontSize:10, padding:"1px 6px", borderRadius:10, fontWeight:700 }}>
+                    {mensajesNoLeidos}
+                  </span>
+                ) : item.badge != null && (
                   <span style={{ marginLeft:"auto", background:C.redLight, color:C.red, fontSize:10, padding:"1px 6px", borderRadius:10, fontWeight:700 }}>
                     {item.badge}
                   </span>
