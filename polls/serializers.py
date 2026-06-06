@@ -1,9 +1,9 @@
 from rest_framework import serializers
 from .models import (
-    Grado, Curso, Estudiante, DetalleAsistencia,
+    Usuario, Grado, Curso, Estudiante, DetalleAsistencia,
     AlertaAcademica, Observacion, RegistroAsistencia,
-    PeriodoAcademico, Asignatura, Calificacion, 
-    ActividadEvaluativa, Notificacion, Mensaje, 
+    PeriodoAcademico, Asignatura, Calificacion,
+    ActividadEvaluativa, Notificacion, Mensaje,
     DestinatarioMensaje,
 )
 from django.utils import timezone
@@ -47,6 +47,18 @@ def annotate_asistencia(queryset):
             filter=Q(asistencias__estado__in=['presente', 'justificado'])
         )
     )
+
+
+class UsuarioSerializer(serializers.ModelSerializer):
+    perfil_id = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Usuario
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'rol', 'perfil_id']
+
+    def get_perfil_id(self, user):
+        perfil = getattr(user, user.rol, None)
+        return str(perfil.id) if perfil else None
 
 
 # ─── DASHBOARD COORDINADOR ───────────────────────────────────────────────────

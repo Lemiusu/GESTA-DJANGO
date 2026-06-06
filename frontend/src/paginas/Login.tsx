@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { authAPI } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import {
-  C,
   IcoBookWhite, IcoBellWhite, IcoChartWhite, IcoClipboardWhite,
   IcoEyeOpen, IcoEyeOff,
 } from "../context/shared";
@@ -50,6 +49,7 @@ function PopupError({ message, onClose }: { message: string; onClose: () => void
 export default function Login() {
   const { rol }      = useParams();
   const navigate     = useNavigate();
+  const { login }    = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [usuario,      setUsuario]      = useState("");
   const [password,     setPassword]     = useState("");
@@ -78,15 +78,16 @@ export default function Login() {
 
     setLoading(true);
     try {
-      // TODO: Reemplazar con llamado real a la API de autenticación
-      // const result = await authAPI.login(usuario, password, rol);
-      // localStorage.setItem("gesta_token", result.token);
-      // navigate(`/dashboard/${rol}`);
+      const authUser = await login(usuario.trim(), password);
+      const userRol = authUser?.rol;
 
-      // ── Placeholder mientras no hay backend ──
-      // Se simula un login exitoso para poder probar la navegación.
-      // ELIMINAR esta simulación cuando el backend esté conectado.
-      console.warn("Login: Autenticación simulada — conectar con authAPI.login()");
+      if (rol && userRol && userRol !== rol) {
+        setErrorMessage(`El usuario no tiene permisos de ${rol}. Inicia sesión con el rol correcto.`);
+        setErrorVisible(true);
+        return;
+      }
+
+      localStorage.setItem("gesta_rol", rol);
       navigate(`/dashboard/${rol}`);
     } catch (error: any) {
       setErrorMessage(error.message || "Error al intentar iniciar sesión");

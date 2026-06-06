@@ -7,8 +7,7 @@ import {
   NAV_COORDINADOR, BOTTOM_NAV_COORDINADOR,
   isMobileWidth, TIPO_OBS_META, BadgeCondicion, TipoPill,
 } from "../../context/shared";
-// TODO: Descomentar cuando el módulo de servicios API esté disponible
-// import { estudiantesAPI } from "../../services/api";
+import { estudiantesAPI } from "../../services/api";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
 interface Estudiante {
@@ -367,16 +366,12 @@ export default function EstudiantesCoordinador() {
   const [calificaciones, setCalificaciones] = useState<Record<number, CalificacionMateria[]>>({});
 
   useEffect(() => {
-    // TODO: Reemplazar con estudiantesAPI.getEstudiantes(filtros) cuando el backend esté conectado
-    try {
-      // const data = await estudiantesAPI.getEstudiantes();
-      // setEstudiantes(data.estudiantes);
-      // setGrados(data.grados);
-      // setCalificaciones(data.calificaciones);
-      console.warn("EstudiantesCoordinador: datos de estudiantes no cargados — backend no conectado aún");
-    } catch (error) {
-      console.warn("Error cargando estudiantes:", error);
-    }
+    estudiantesAPI.getEstudiantes()
+      .then(data => {
+        setEstudiantes(data);
+        setGrados([...new Set(data.map((e: Estudiante) => e.grado).filter(Boolean))] as string[]);
+      })
+      .catch(error => console.warn("Error cargando estudiantes:", error));
   }, []);
 
   /* ── Nombre del usuario (debe venir de la sesión / API) ── */

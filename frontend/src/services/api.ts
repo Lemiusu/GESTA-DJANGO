@@ -4,26 +4,84 @@
 // Reemplazar las URLs base y endpoints según la configuración del backend.
 // ═══════════════════════════════════════════════════════════════
 
-// TODO: Configurar la URL base del backend Django
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+const ACCESS_TOKEN_KEY = "gesta_access_token";
+const REFRESH_TOKEN_KEY = "gesta_refresh_token";
 
-// TODO: Implementar manejo de token JWT/autenticación
+export function mapRiesgo(riesgo?: string | null): string {
+  const m: Record<string, string> = { bajo: "verde", medio: "amarillo", alto: "rojo" };
+  return riesgo ? (m[riesgo] ?? "verde") : "verde";
+}
+
+function getStoredToken(key: string): string | null {
+  return localStorage.getItem(key);
+}
+
+function setStoredToken(key: string, value: string) {
+  localStorage.setItem(key, value);
+}
+
+function clearStoredTokens() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
 function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem("gesta_token");
+  const token = getStoredToken(ACCESS_TOKEN_KEY);
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
-async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+async function refreshAccessToken(): Promise<string> {
+  const refresh = getStoredToken(REFRESH_TOKEN_KEY);
+  if (!refresh) {
+    throw new Error("No refresh token available.");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/auth/token/refresh/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh }),
+  });
+
+  if (!response.ok) {
+    clearStoredTokens();
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(error.detail || `Error ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data.access) {
+    throw new Error("Refresh token failed.");
+  }
+
+  setStoredToken(ACCESS_TOKEN_KEY, data.access);
+  if (data.refresh) {
+    setStoredToken(REFRESH_TOKEN_KEY, data.refresh);
+  }
+  return data.access;
+}
+
+async function request<T>(endpoint: string, options: RequestInit = {}, retry = true): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
       ...getAuthHeaders(),
-      ...options?.headers,
+      ...options.headers,
     },
   });
+
+  if (response.status === 401 && retry) {
+    try {
+      await refreshAccessToken();
+      return request<T>(endpoint, options, false);
+    } catch (refreshError) {
+      clearStoredTokens();
+      throw new Error("Unauthorized. Por favor inicia sesión de nuevo.");
+    }
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));
@@ -33,226 +91,304 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   return response.json();
 }
 
-// ─── AUTENTICACIÓN ──────────────────────────────────────────────
-// TODO: Conectar con el endpoint de login del backend Django
+function buildQuery(params: Record<string, any>): string {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      query.append(key, String(value));
+    }
+  });
+  const queryString = query.toString();
+  return queryString ? `?${queryString}` : "";
+}
+
 export const authAPI = {
-  login: async (usuario: string, password: string, rol: string) => {
-    // TODO: Reemplazar con llamado real a la API
-    // return request<{ token: string; user: User }>("/auth/login/", {
-    //   method: "POST",
-    //   body: JSON.stringify({ usuario, password, rol }),
-    // });
-    throw new Error("authAPI.login no implementado — conectar con backend Django");
+  login: async (usuario: string, password: string) => {
+    const data = await request<{ access: string; refresh: string; user: any }>(
+      "/auth/token/",
+      {
+        method: "POST",
+        body: JSON.stringify({ username: usuario, password }),
+      }
+    );
+
+    if (data.access) {
+      setStoredToken(ACCESS_TOKEN_KEY, data.access);
+    }
+    if (data.refresh) {
+      setStoredToken(REFRESH_TOKEN_KEY, data.refresh);
+    }
+
+    return data;
   },
   logout: async () => {
-    // TODO: Reemplazar con llamado real a la API
-    // return request("/auth/logout/", { method: "POST" });
-    localStorage.removeItem("gesta_token");
+    clearStoredTokens();
   },
   refreshToken: async () => {
-    // TODO: Implementar refresh de token
-    throw new Error("authAPI.refreshToken no implementado — conectar con backend Django");
+    return refreshAccessToken();
+  },
+  me: async () => {
+    return request<any>("/auth/me/");
   },
 };
 
-// ─── DOCENTE ────────────────────────────────────────────────────
-// TODO: Conectar con endpoints del backend para docentes
 export const docenteAPI = {
-  getCursos: async (docenteId: number) => {
-    // TODO: GET /docentes/{id}/cursos/
-    throw new Error("docenteAPI.getCursos no implementado");
+  getCursos: async (docenteId?: number) => {
+    const endpoint = docenteId ? `/docentes/${docenteId}/cursos/` : "/docentes/cursos/";
+    const data = await request<{ cursos: any[] }>(endpoint);
+    return data.cursos;
   },
   getEstudiantesPorCurso: async (cursoId: number) => {
-    // TODO: GET /cursos/{id}/estudiantes/
-    throw new Error("docenteAPI.getEstudiantesPorCurso no implementado");
+    return request<any[]>(`/cursos/${cursoId}/estudiantes/`);
   },
-  getDashboard: async (docenteId: number) => {
-    // TODO: GET /docentes/{id}/dashboard/
-    throw new Error("docenteAPI.getDashboard no implementado");
+  getDashboard: async (docenteId?: number) => {
+    const endpoint = docenteId ? `/docentes/${docenteId}/dashboard/` : "/docentes/dashboard/";
+    return request<any>(endpoint);
   },
 };
 
-// ─── ASISTENCIA ─────────────────────────────────────────────────
-// TODO: Conectar con endpoints del backend para asistencia
 export const asistenciaAPI = {
   getRegistroHoy: async (cursoId: number) => {
-    // TODO: GET /asistencia/?curso={cursoId}&fecha=hoy
-    throw new Error("asistenciaAPI.getRegistroHoy no implementado");
+    return request<Record<string, { abierto: boolean; estudiantes: any[] }>>(
+      `/asistencia/${buildQuery({ curso: cursoId, fecha: "hoy" })}`
+    );
   },
-  guardarRegistro: async (cursoId: number, registros: Array<{ estudianteId: number; estado: string; motivo?: string }>) => {
-    // TODO: POST /asistencia/
-    throw new Error("asistenciaAPI.guardarRegistro no implementado");
+  guardarRegistro: async (
+    cursoId: string,
+    registros: Array<{ estudianteId: string; estado: string; motivo?: string }>,
+    fecha?: string
+  ) => {
+    return request<any>("/asistencia/", {
+      method: "POST",
+      body: JSON.stringify({
+        curso_id: cursoId,
+        detalles: registros.map(r => ({
+          estudiante_id: r.estudianteId,
+          estado: r.estado,
+          motivo: r.motivo,
+        })),
+        fecha,
+      }),
+    });
   },
   getHistorial: async (cursoId: number, fechaInicio?: string, fechaFin?: string) => {
-    // TODO: GET /asistencia/historial/?curso={cursoId}
-    throw new Error("asistenciaAPI.getHistorial no implementado");
+    return request<any[]>(`/asistencia/historial/${buildQuery({ curso: cursoId, fechaInicio, fechaFin })}`);
   },
   editarRegistro: async (registroId: number, estado: string, motivo?: string) => {
-    // TODO: PATCH /asistencia/{id}/
-    throw new Error("asistenciaAPI.editarRegistro no implementado");
+    return request<any>(`/asistencia/${registroId}/`, {
+      method: "PATCH",
+      body: JSON.stringify({ estado, motivo }),
+    });
   },
   getAsistenciaEstudiante: async (estudianteId: number) => {
-    // TODO: GET /estudiantes/{id}/asistencia/
-    throw new Error("asistenciaAPI.getAsistenciaEstudiante no implementado");
+    return request<any[]>(`/estudiantes/${estudianteId}/asistencia/`);
   },
   getAsistenciaGrados: async () => {
-    // TODO: GET /asistencia/grados/
-    throw new Error("asistenciaAPI.getAsistenciaGrados no implementado");
+    return request<any[]>("/asistencia/grados/");
   },
 };
 
-// ─── CALIFICACIONES / NOTAS ────────────────────────────────────
-// TODO: Conectar con endpoints del backend para calificaciones
 export const calificacionesAPI = {
-  getCursosConNotas: async (docenteId: number) => {
-    // TODO: GET /calificaciones/?docente={docenteId}
-    throw new Error("calificacionesAPI.getCursosConNotas no implementado");
+  getCursosConNotas: async () => {
+    const data = await request<{ cursos: any[] }>("/calificaciones/");
+    const result: Record<string, any> = {};
+    for (const c of data.cursos || []) {
+      result[c.curso] = {
+        abierto: false,
+        actividades: (c.actividades || []).map((a: any) => ({
+          id: a.id,
+          nombre: a.nombre,
+          peso: a.peso,
+          publicada: a.publicada,
+        })),
+        estudiantes: (c.estudiantes || []).map((e: any) => ({
+          id: e.id,
+          nombre: e.nombre,
+          condicion: e.condicion,
+        })),
+        notas: c.notas || {},
+      };
+    }
+    return result;
   },
-  guardarNota: async (cursoId: number, estudianteId: number, actividadId: number, valor: string) => {
-    // TODO: POST/PUT /calificaciones/notas/
-    throw new Error("calificacionesAPI.guardarNota no implementado");
+  guardarNota: async (_cursoId: string, estudianteId: string, actividadId: string, valor: string) => {
+    return request<any>("/calificaciones/notas/", {
+      method: "POST",
+      body: JSON.stringify({ estudianteId, actividadId, valor }),
+    });
   },
   crearActividad: async (cursoId: number, actividad: { nombre: string; peso: number; tipo: string }) => {
-    // TODO: POST /calificaciones/actividades/
-    throw new Error("calificacionesAPI.crearActividad no implementado");
+    return request<any>("/calificaciones/actividades/", {
+      method: "POST",
+      body: JSON.stringify({ cursoId, nombre: actividad.nombre, peso: actividad.peso }),
+    });
   },
   publicarNotas: async (actividadId: number) => {
-    // TODO: POST /calificaciones/actividades/{id}/publicar/
-    throw new Error("calificacionesAPI.publicarNotas no implementado");
+    return request<any>(`/calificaciones/actividades/${actividadId}/publicar/`, {
+      method: "POST",
+    });
   },
   despublicarNotas: async (actividadId: number) => {
-    // TODO: POST /calificaciones/actividades/{id}/despublicar/
-    throw new Error("calificacionesAPI.despublicarNotas no implementado");
+    return request<any>(`/calificaciones/actividades/${actividadId}/despublicar/`, {
+      method: "POST",
+    });
   },
   getCalificacionesEstudiante: async (estudianteId: number) => {
-    // TODO: GET /estudiantes/{id}/calificaciones/
-    throw new Error("calificacionesAPI.getCalificacionesEstudiante no implementado");
+    return request<any>(`/estudiantes/${estudianteId}/calificaciones/`);
   },
   getCursosCoordinador: async () => {
-    // TODO: GET /calificaciones/coordinador/cursos/
-    throw new Error("calificacionesAPI.getCursosCoordinador no implementado");
+    return request<any>("/coordinador/calificaciones/");
   },
 };
 
-// ─── OBSERVACIONES / OBSERVADOR ─────────────────────────────────
-// TODO: Conectar con endpoints del backend para observaciones
 export const observacionesAPI = {
   getObservacionesEstudiante: async (estudianteId: number) => {
-    // TODO: GET /observaciones/?estudiante={estudianteId}
-    throw new Error("observacionesAPI.getObservacionesEstudiante no implementado");
+    return request<any[]>(`/observaciones/${buildQuery({ estudiante: estudianteId })}`);
   },
   crearObservacion: async (observacion: { estudianteId: number; tipo: string; desc: string; autor: string; rol: string }) => {
-    // TODO: POST /observaciones/
-    throw new Error("observacionesAPI.crearObservacion no implementado");
+    return request<any>("/observaciones/", {
+      method: "POST",
+      body: JSON.stringify({ estudiante: observacion.estudianteId, tipo: observacion.tipo, descripcion: observacion.desc, es_positiva: false }),
+    });
   },
   getObservacionesCurso: async (cursoId: number) => {
-    // TODO: GET /observaciones/?curso={cursoId}
-    throw new Error("observacionesAPI.getObservacionesCurso no implementado");
+    return request<any[]>(`/observaciones/${buildQuery({ curso: cursoId })}`);
   },
   getObservacionesRecientes: async () => {
-    // TODO: GET /observaciones/recientes/
-    throw new Error("observacionesAPI.getObservacionesRecientes no implementado");
+    return request<any[]>("/observaciones/recientes/");
   },
 };
 
-// ─── MENSAJES Y NOTIFICACIONES ──────────────────────────────────
-// TODO: Conectar con endpoints del backend para mensajes
 export const mensajesAPI = {
   getMensajesPara: async (rol: string) => {
-    // TODO: GET /mensajes/?para={rol}
-    throw new Error("mensajesAPI.getMensajesPara no implementado");
+    return request<any[]>(`/mensajes/${buildQuery({ para: rol })}`);
   },
   marcarLeido: async (mensajeId: number) => {
-    // TODO: PATCH /mensajes/{id}/leido/
-    throw new Error("mensajesAPI.marcarLeido no implementado");
+    return request<any>(`/mensajes/${mensajeId}/leido/`, {
+      method: "PATCH",
+    });
   },
-  enviarMensaje: async (mensaje: { de: string; rolDe: string; para: string; asunto: string; contenido: string; tipo: string }) => {
-    // TODO: POST /mensajes/
-    throw new Error("mensajesAPI.enviarMensaje no implementado");
+  enviarMensaje: async (mensaje: { destinatarios: string[]; asunto: string; contenido: string }) => {
+    return request<any>("/mensajes/", {
+      method: "POST",
+      body: JSON.stringify(mensaje),
+    });
   },
   getNoLeidos: async (rol: string) => {
-    // TODO: GET /mensajes/no-leidos/?rol={rol}
-    throw new Error("mensajesAPI.getNoLeidos no implementado");
+    return request<{ total: number }>(`/mensajes/no-leidos/${buildQuery({ rol })}`);
   },
 };
 
-// ─── ALERTAS ────────────────────────────────────────────────────
-// TODO: Conectar con endpoints del backend para alertas
 export const alertasAPI = {
   getAlertasActivas: async () => {
-    // TODO: GET /alertas/?estado=activa
-    throw new Error("alertasAPI.getAlertasActivas no implementado");
+    return request<any[]>("/alertas/?estado=activa");
   },
   crearAlerta: async (alerta: { estudianteId: number; tipo: string; motivo: string; responsable: string }) => {
-    // TODO: POST /alertas/
-    throw new Error("alertasAPI.crearAlerta no implementado");
+    return request<any>("/alertas/", {
+      method: "POST",
+      body: JSON.stringify({ estudianteId: alerta.estudianteId, titulo: alerta.tipo, contenido: alerta.motivo }),
+    });
   },
   resolverAlerta: async (alertaId: number) => {
-    // TODO: PATCH /alertas/{id}/resolver/
-    throw new Error("alertasAPI.resolverAlerta no implementado");
+    return request<any>(`/alertas/${alertaId}/resolver/`, {
+      method: "PATCH",
+    });
   },
 };
 
-// ─── ESTUDIANTES ────────────────────────────────────────────────
-// TODO: Conectar con endpoints del backend para estudiantes
 export const estudiantesAPI = {
   getEstudiantes: async (filtros?: { grado?: string; riesgo?: string; condicion?: string; busqueda?: string }) => {
-    // TODO: GET /estudiantes/ con query params
-    throw new Error("estudiantesAPI.getEstudiantes no implementado");
+    const data = await request<{ estudiantes: any[] }>(`/estudiantes/${buildQuery(filtros || {})}`);
+    return (data.estudiantes || []).map((e: any) => ({
+      id: e.id,
+      nombre: e.nombre,
+      grado: e.grado || e.curso,
+      promedio: e.promedio ?? 0,
+      asistencia: e.porcentaje_asistencia ?? 0,
+      obs: e.observaciones_negativas ?? 0,
+      riesgo: mapRiesgo(e.riesgo),
+      condicion: e.descripcion_condicion || null,
+    }));
   },
   getPerfilEstudiante: async (estudianteId: number) => {
-    // TODO: GET /estudiantes/{id}/perfil/
-    throw new Error("estudiantesAPI.getPerfilEstudiante no implementado");
+    return request<any>(`/estudiantes/${estudianteId}/perfil/`);
   },
   getCondicion: async (estudianteId: number) => {
-    // TODO: GET /estudiantes/{id}/condicion/
-    throw new Error("estudiantesAPI.getCondicion no implementado");
+    return request<any>(`/estudiantes/${estudianteId}/condicion/`);
   },
   setCondicion: async (estudianteId: number, condicion: { esRepitente: boolean; descripcionRepitente?: string; condicionInclusion?: string }) => {
-    // TODO: PUT /estudiantes/{id}/condicion/
-    throw new Error("estudiantesAPI.setCondicion no implementado");
+    return request<any>(`/estudiantes/${estudianteId}/condicion/`, {
+      method: "PUT",
+      body: JSON.stringify(condicion),
+    });
   },
   crearEstudiante: async (estudiante: { nombre: string; grado: string; condicion?: string | null }) => {
-    // TODO: POST /estudiantes/
-    throw new Error("estudiantesAPI.crearEstudiante no implementado");
+    return request<any>("/estudiantes/crear/", {
+      method: "POST",
+      body: JSON.stringify({ nombre: estudiante.nombre, curso_id: estudiante.grado, condicion: estudiante.condicion }),
+    });
   },
   getEstudiantesAlerta: async () => {
-    // TODO: GET /estudiantes/para-alertas/
-    throw new Error("estudiantesAPI.getEstudiantesAlerta no implementado");
+    return request<any[]>("/estudiantes/para-alertas/");
   },
 };
 
-// ─── COORDINADOR ────────────────────────────────────────────────
-// TODO: Conectar con endpoints del backend para coordinador
 export const coordinadorAPI = {
   getDashboard: async () => {
-    // TODO: GET /coordinador/dashboard/
-    throw new Error("coordinadorAPI.getDashboard no implementado");
+    return request<any>("/coordinador/dashboard/");
   },
   getEstadoGrados: async () => {
-    // TODO: GET /coordinador/estado-grados/
-    throw new Error("coordinadorAPI.getEstadoGrados no implementado");
+    const data = await request<{ cursos_por_grado: any[] }>("/coordinador/estado-grados/");
+    return (data.cursos_por_grado || []).map((g: any) => {
+      const cursos = (g.cursos || []).map((c: any) => {
+        const ests = c.estudiantes || [];
+        return {
+          nombre: c.nombre,
+          total: ests.length,
+          verde: ests.filter((e: any) => e.riesgo === "bajo").length,
+          amarillo: ests.filter((e: any) => e.riesgo === "medio").length,
+          rojo: ests.filter((e: any) => e.riesgo === "alto").length,
+        };
+      });
+      const total = cursos.reduce((s: number, c: any) => s + c.total, 0);
+      const verde = cursos.reduce((s: number, c: any) => s + c.verde, 0);
+      const amarillo = cursos.reduce((s: number, c: any) => s + c.amarillo, 0);
+      const rojo = cursos.reduce((s: number, c: any) => s + c.rojo, 0);
+      return { grado: g.nombre, total, verde, amarillo, rojo, cursos };
+    });
   },
 };
 
-// ─── ACUDIENTE ──────────────────────────────────────────────────
-// TODO: Conectar con endpoints del backend para acudiente
 export const acudienteAPI = {
-  getEstudiantesVinculados: async (acudienteId: number) => {
-    // TODO: GET /acudientes/{id}/estudiantes/
-    throw new Error("acudienteAPI.getEstudiantesVinculados no implementado");
+  getEstudiantesVinculados: async (acudienteId: string) => {
+    const data = await request<any[]>(`/acudientes/${acudienteId}/estudiantes/`);
+    return data.map((e: any) => ({
+      id: e.id,
+      nombre: e.nombre,
+      grado: e.grado || e.curso,
+      curso: e.curso,
+    }));
   },
   getDatosEstudiante: async (estudianteId: number) => {
-    // TODO: GET /estudiantes/{id}/datos-acudiente/
-    throw new Error("acudienteAPI.getDatosEstudiante no implementado");
+    return request<any>(`/estudiantes/${estudianteId}/datos-acudiente/`);
   },
 };
 
-// ─── ESTUDIANTE (rol) ───────────────────────────────────────────
-// TODO: Conectar con endpoints del backend para estudiante
 export const estudianteAPI = {
-  getPerfil: async (estudianteId: number) => {
-    // TODO: GET /estudiantes/{id}/mi-perfil/
-    throw new Error("estudianteAPI.getPerfil no implementado");
+  getPerfil: async (estudianteId: string) => {
+    const data = await request<any>(`/estudiantes/${estudianteId}/perfil/`);
+    const info = data.info_general || {};
+    return {
+      id: info.id,
+      nombre: info.nombre,
+      grado: (info.grado || info.curso || "").replace("Grado ", ""),
+      riesgo: mapRiesgo(info.riesgo),
+      promedio: info.promedio ?? 0,
+      asistencia: info.porcentaje_asistencia ?? 0,
+      materiasPerdidas: 0,
+      jornada: "Mañana",
+      calificaciones: data.calificaciones || [],
+      observaciones: data.observaciones || [],
+    };
   },
 };

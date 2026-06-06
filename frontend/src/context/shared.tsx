@@ -3,7 +3,6 @@
 // Importar en todos los archivos del proyecto GESTA
 // ═══════════════════════════════════════════════════════════════
 import React from "react";
-import { useNavigate } from "react-router-dom";
 
 /* ─── PALETA GLOBAL ───────────────────────────────────────────── */
 export const C = {

@@ -434,9 +434,8 @@ export default function IngresoNotas() {
   // Cargar datos desde la API al montar el componente
   useEffect(() => {
     // TODO: Reemplazar con calificacionesAPI.getCursosConNotas(docenteId) cuando el backend esté conectado
-    const docenteId = 1; // TODO: Obtener del contexto de autenticación
     try {
-      calificacionesAPI.getCursosConNotas(docenteId).then((data) => {
+      calificacionesAPI.getCursosConNotas().then((data) => {
         setCursos(data as Record<string, CursoData>);
       }).catch(() => {
         console.warn("No se pudieron cargar los cursos de calificaciones desde la API. Se mostrará estado vacío hasta que el backend esté conectado.");

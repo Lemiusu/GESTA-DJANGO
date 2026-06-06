@@ -8,6 +8,7 @@ import {
   isMobileWidth,
 } from "../../context/shared";
 import { coordinadorAPI, asistenciaAPI, observacionesAPI, estudiantesAPI } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 
 /* ─── TIPOS ─────────────────────────────────────────────────────── */
 interface CursoGrado {
@@ -446,8 +447,8 @@ export default function DashboardCoordinador() {
   const [navActivo, setNavActivo] = useState("inicio");
   const [secciones, setSecciones] = useState({ estado: true, asistencia: false, alertas: false, observaciones: false });
 
-  // TODO: Reemplazar con datos del usuario autenticado (context/prop)
-  const userName = "";
+  const { nombreCompleto } = useAuth();
+  const userName = nombreCompleto();
   const userRole = "Coordinador";
 
   // TODO: Reemplazar con coordinadorAPI.getEstadoGrados() cuando el backend esté conectado
@@ -489,17 +490,25 @@ export default function DashboardCoordinador() {
 
   useEffect(() => {
     async function fetchAsistenciaEstudiantes() {
-      for (const g of asistenciaGrados) {
-        try {
-          const data = await asistenciaAPI.getRegistroHoy(parseInt(g.grado));
-          setAsistenciaEstudiantes(prev => ({ ...prev, [g.grado]: data as AsistenciaEstudiante[] }));
-        } catch (err) {
-          console.warn(`DashboardCoordinador: No se pudo cargar la asistencia de estudiantes para el grado ${g.grado}`, err);
+      try {
+        const dash = await coordinadorAPI.getDashboard();
+        const mapped: Record<string, AsistenciaEstudiante[]> = {};
+        for (const g of dash.asistencia_hoy || []) {
+          const lista: AsistenciaEstudiante[] = [];
+          for (const c of g.cursos || []) {
+            for (const e of c.estudiantes || []) {
+              lista.push({ nombre: e.nombre, estado: e.estado });
+            }
+          }
+          mapped[g.nombre] = lista;
         }
+        setAsistenciaEstudiantes(mapped);
+      } catch (err) {
+        console.warn("DashboardCoordinador: No se pudo cargar asistencia de estudiantes", err);
       }
     }
-    if (asistenciaGrados.length > 0) fetchAsistenciaEstudiantes();
-  }, [asistenciaGrados]);
+    fetchAsistenciaEstudiantes();
+  }, []);
 
   useEffect(() => {
     async function fetchObservaciones() {
@@ -529,8 +538,8 @@ export default function DashboardCoordinador() {
     async function fetchDashboard() {
       try {
         const data = await coordinadorAPI.getDashboard();
-        // TODO: Extraer asistenciaPromedio y otros datos del dashboard
-        // setAsistenciaPromedio(data.asistenciaPromedio);
+        const pct = data?.resumen?.porcentaje_asistencia_hoy;
+        if (pct !== undefined) setAsistenciaPromedio(`${pct}%`);
       } catch (err) {
         console.warn("DashboardCoordinador: No se pudo cargar el dashboard desde la API", err);
       }

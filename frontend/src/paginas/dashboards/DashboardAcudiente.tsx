@@ -7,7 +7,8 @@ import {
   NAV_ACUDIENTE, BOTTOM_NAV_ACUDIENTE,
   isMobileWidth,
 } from "../../context/shared";
-import { acudienteAPI } from "../../services/api";
+import { acudienteAPI, estudianteAPI } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 
 /* ─── TIPOS ─────────────────────────────────────────────────────── */
 type EstudianteVinculado = {
@@ -140,30 +141,43 @@ export default function DashboardAcudiente() {
   const [navActivo, setNavActivo] = useState("inicio");
   const [secciones, setSecciones] = useState({ notas: true, observaciones: false, notificaciones: false });
 
-  // TODO: Reemplazar con datos del usuario autenticado cuando el backend esté conectado
-  const [nombreAcudiente, setNombreAcudiente] = useState<string>("");
-  // TODO: Reemplazar con acudienteAPI.getEstudiantesVinculados(userId) cuando el backend esté conectado
+  const { user, nombreCompleto } = useAuth();
+  const nombreAcudiente = nombreCompleto();
   const [estudiantesVinculados, setEstudiantesVinculados] = useState<EstudianteVinculado[]>([]);
-  // TODO: Reemplazar con acudienteAPI.getDatosEstudiante(estudianteId) cuando el backend esté conectado
   const [datosEstudiante, setDatosEstudiante] = useState<DatosEstudiante | null>(null);
 
   useEffect(() => {
-    // TODO: Reemplazar con acudienteAPI.getEstudiantesVinculados(userId) cuando el backend esté conectado
-    try {
-      // acudienteAPI.getEstudiantesVinculados(userId).then(setEstudiantesVinculados);
-    } catch (err) {
-      console.warn("No se pudieron cargar los estudiantes vinculados:", err);
-    }
-  }, []);
+    if (!user?.perfil_id) return;
+    acudienteAPI.getEstudiantesVinculados(user.perfil_id)
+      .then(data => setEstudiantesVinculados(data.map((e: any) => ({
+        id: e.id,
+        nombre: e.nombre,
+        grado: e.grado || "",
+        jornada: "Mañana",
+      }))))
+      .catch(err => console.warn("No se pudieron cargar los estudiantes vinculados:", err));
+  }, [user?.perfil_id]);
 
   useEffect(() => {
     if (estudianteActivo === null) return;
-    // TODO: Reemplazar con acudienteAPI.getDatosEstudiante(estudianteId) cuando el backend esté conectado
-    try {
-      // acudienteAPI.getDatosEstudiante(estudianteActivo).then(setDatosEstudiante);
-    } catch (err) {
-      console.warn("No se pudieron cargar los datos del estudiante:", err);
-    }
+    estudianteAPI.getPerfil(String(estudianteActivo))
+      .then(perfil => setDatosEstudiante({
+        riesgo: perfil.riesgo,
+        promedio: perfil.promedio,
+        asistencia: perfil.asistencia,
+        materiasPerdidas: perfil.materiasPerdidas,
+        observacionesNeg: 0,
+        observacionesPos: 0,
+        materias: (perfil.calificaciones || []).map((c: any) => ({
+          nombre: c.asignatura,
+          promedio: c.promedio ?? 0,
+          perdida: (c.promedio ?? 0) < 3,
+          notas: [],
+        })),
+        observaciones: [],
+        notificaciones: [],
+      }))
+      .catch(err => console.warn("No se pudieron cargar los datos del estudiante:", err));
   }, [estudianteActivo]);
 
   // Seleccionar primer estudiante automáticamente cuando se carguen

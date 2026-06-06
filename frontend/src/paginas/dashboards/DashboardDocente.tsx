@@ -6,7 +6,8 @@ import {
   NAV_DOCENTE, BOTTOM_NAV_DOCENTE,
   isMobileWidth,
 } from "../../context/shared";
-import { docenteAPI } from "../../services/api";
+import { docenteAPI, mapRiesgo } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 
 /* ─── TIPOS ─────────────────────────────────────────────────────── */
 interface Curso {
@@ -182,22 +183,28 @@ export default function DashboardDocente() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // TODO: Reemplazar con datos del usuario autenticado (context/prop)
-  const userName = "";
+  const { nombreCompleto } = useAuth();
+  const userName = nombreCompleto() || "Docente";
   const userRole = "Docente · Mat. 6-9";
 
-  // TODO: Reemplazar con docenteAPI.getCursos(userId) cuando el backend esté conectado
   const [cursos, setCursos] = useState<Curso[]>([]);
-  // TODO: Reemplazar con docenteAPI.getEstudiantesPorCurso(cursoId) cuando el backend esté conectado
   const [estudiantesPorCurso, setEstudiantesPorCurso] = useState<Record<number, EstudianteCurso[]>>({});
-  // TODO: Reemplazar con docenteAPI.getDashboard(userId) cuando el backend esté conectado
   const [alertasCount, setAlertasCount] = useState(0);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const data = await docenteAPI.getCursos(0);
-        setCursos(data as Curso[]);
+        const data = await docenteAPI.getCursos();
+        const cursosData = (data || []).map((curso: any) => ({
+          id: curso.id,
+          nombre: curso.nombre,
+          estudiantes: curso.estudiantes?.length ?? 0,
+          presentes: curso.estudiantes?.length ?? 0,
+          promedio: 0,
+          enRiesgo: curso.estudiantes?.filter((e: any) => !!e.condicion).length ?? 0,
+          estado: curso.estudiantes?.filter((e: any) => !!e.condicion).length > 2 ? "rojo" : "verde",
+        }));
+        setCursos(cursosData);
       } catch (err) {
         console.warn("DashboardDocente: No se pudieron cargar los cursos desde la API", err);
       }
@@ -207,11 +214,20 @@ export default function DashboardDocente() {
 
   useEffect(() => {
     async function fetchEstudiantes() {
-      // Load estudiantes for each curso
       for (const curso of cursos) {
         try {
           const data = await docenteAPI.getEstudiantesPorCurso(curso.id);
-          setEstudiantesPorCurso(prev => ({ ...prev, [curso.id]: data as EstudianteCurso[] }));
+          setEstudiantesPorCurso(prev => ({
+            ...prev,
+            [curso.id]: (data as any[]).map(e => ({
+              id: e.id,
+              nombre: e.nombre,
+              promedio: 0,
+              asistencia: 100,
+              obs: 0,
+              riesgo: mapRiesgo(e.riesgo),
+            })),
+          }));
         } catch (err) {
           console.warn(`DashboardDocente: No se pudieron cargar los estudiantes del curso ${curso.id}`, err);
         }
@@ -223,9 +239,8 @@ export default function DashboardDocente() {
   useEffect(() => {
     async function fetchDashboard() {
       try {
-        const data = await docenteAPI.getDashboard(0);
-        // TODO: Extraer alertasCount de la respuesta del dashboard
-        // setAlertasCount(data.alertasCount);
+        const data = await docenteAPI.getDashboard();
+        setAlertasCount(data?.cursos?.length ?? 0);
       } catch (err) {
         console.warn("DashboardDocente: No se pudo cargar el dashboard desde la API", err);
       }

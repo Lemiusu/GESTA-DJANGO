@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useGESTA, Mensaje } from "../context/GESTAContext";
+import { useGESTA, type Mensaje } from "../context/GESTAContext";
 import {
   C, S, Avatar, Sidebar,
   NAV_DOCENTE, NAV_COORDINADOR, NAV_ACUDIENTE,
   TIPO_MSG_META,
-  IcoHome, IcoCheck, IcoEdit, IcoEye, IcoMsg, IcoBell, IcoUsers,
+  IcoHome, IcoCheck, IcoEdit, IcoEye, IcoMsg, IcoUsers,
 } from "../context/shared";
 // TODO: Descomentar cuando el backend esté conectado
 // import { mensajesAPI, alertasAPI, estudiantesAPI } from "../services/api";

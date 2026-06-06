@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, useCallback } from "react";
+import type { ReactNode } from "react";
 import {
   observacionesAPI,
   mensajesAPI,
   alertasAPI,
   estudiantesAPI,
-  asistenciaAPI,
 } from "../services/api";
 
 /* ─── TIPOS ─────────────────────────────────────────────────────── */
@@ -22,6 +22,7 @@ export interface Observacion {
 
 export interface Mensaje {
   id: number;
+  destinatarios?: string[];
   de: string;
   rolDe: string;
   para: string;
@@ -117,54 +118,51 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [condiciones, setCondiciones] = useState<CondicionEstudiante[]>([]);
-  const [asistencia, setAsistencia] = useState<AsistenciaRegistro[]>([]);
+  const [asistencia] = useState<AsistenciaRegistro[]>([]);
 
   // Estados de carga
   const [loadingObservaciones, setLoadingObservaciones] = useState(false);
   const [loadingMensajes, setLoadingMensajes] = useState(false);
   const [loadingAlertas, setLoadingAlertas] = useState(false);
-  const [loadingAsistencia, setLoadingAsistencia] = useState(false);
+  const [loadingAsistencia] = useState(false);
 
   /* ─── Carga inicial de datos desde el backend ─── */
   const cargarDatosIniciales = useCallback(async (rol: string) => {
-    // TODO: Llamar a las APIs del backend para cargar los datos iniciales
-    // según el rol del usuario autenticado. Ejemplo:
-    //
-    // try {
-    //   setLoadingMensajes(true);
-    //   const msgs = await mensajesAPI.getMensajesPara(rol);
-    //   setMensajes(msgs);
-    // } catch (error) {
-    //   console.error("Error cargando mensajes:", error);
-    // } finally {
-    //   setLoadingMensajes(false);
-    // }
-    //
-    // try {
-    //   setLoadingAlertas(true);
-    //   const alertasData = await alertasAPI.getAlertasActivas();
-    //   setAlertas(alertasData);
-    // } catch (error) {
-    //   console.error("Error cargando alertas:", error);
-    // } finally {
-    //   setLoadingAlertas(false);
-    // }
-    console.warn("GESTAContext.cargarDatosIniciales: Datos mock vacíos — conectar con backend Django");
+    try {
+      setLoadingMensajes(true);
+      const msgs = await mensajesAPI.getMensajesPara(rol);
+      setMensajes(msgs);
+    } catch (error) {
+      console.error("Error cargando mensajes:", error);
+      setMensajes([]);
+    } finally {
+      setLoadingMensajes(false);
+    }
+
+    try {
+      setLoadingAlertas(true);
+      const alertasData = await alertasAPI.getAlertasActivas();
+      setAlertas(alertasData);
+    } catch (error) {
+      console.error("Error cargando alertas:", error);
+      setAlertas([]);
+    } finally {
+      setLoadingAlertas(false);
+    }
   }, []);
 
   /* Observaciones */
   const agregarObservacion = useCallback(async (obs: Omit<Observacion, "id">) => {
-    // TODO: Llamar a la API para crear la observación en el backend
-    // try {
-    //   const nueva = await observacionesAPI.crearObservacion(obs);
-    //   setObservaciones(prev => [...prev, nueva]);
-    // } catch (error) {
-    //   console.error("Error creando observación:", error);
-    //   throw error;
-    // }
-    console.warn("GESTAContext.agregarObservacion: No conectado al backend — datos no persisten");
-    // Optimistic update temporal (solo en memoria)
-    setObservaciones(prev => [...prev, { ...obs, id: Date.now() }]);
+    try {
+      setLoadingObservaciones(true);
+      const nueva = await observacionesAPI.crearObservacion(obs);
+      setObservaciones(prev => [...prev, nueva]);
+    } catch (error) {
+      console.error("Error creando observación:", error);
+      throw error;
+    } finally {
+      setLoadingObservaciones(false);
+    }
   }, []);
 
   function getObservacionesEstudiante(estudianteId: number) {
@@ -173,27 +171,26 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
 
   /* Mensajes */
   const agregarMensaje = useCallback(async (msg: Omit<Mensaje, "id">) => {
-    // TODO: Llamar a la API para enviar el mensaje
-    // try {
-    //   const nuevo = await mensajesAPI.enviarMensaje(msg);
-    //   setMensajes(prev => [nuevo, ...prev]);
-    // } catch (error) {
-    //   console.error("Error enviando mensaje:", error);
-    //   throw error;
-    // }
-    console.warn("GESTAContext.agregarMensaje: No conectado al backend — datos no persisten");
-    setMensajes(prev => [{ ...msg, id: Date.now() }, ...prev]);
+    try {
+      const nuevo = await mensajesAPI.enviarMensaje({
+        destinatarios: msg.destinatarios ?? [msg.para],
+        asunto: msg.asunto,
+        contenido: msg.contenido,
+      });
+      setMensajes(prev => [nuevo, ...prev]);
+    } catch (error) {
+      console.error("Error enviando mensaje:", error);
+      throw error;
+    }
   }, []);
 
   const marcarMensajeLeido = useCallback(async (id: number) => {
-    // TODO: Llamar a la API para marcar como leído
-    // try {
-    //   await mensajesAPI.marcarLeido(id);
-    //   setMensajes(prev => prev.map(m => m.id === id ? { ...m, leido: true } : m));
-    // } catch (error) {
-    //   console.error("Error marcando mensaje como leído:", error);
-    // }
-    setMensajes(prev => prev.map(m => m.id === id ? { ...m, leido: true } : m));
+    try {
+      await mensajesAPI.marcarLeido(id);
+      setMensajes(prev => prev.map(m => m.id === id ? { ...m, leido: true } : m));
+    } catch (error) {
+      console.error("Error marcando mensaje como leído:", error);
+    }
   }, []);
 
   function getMensajesPara(rol: string) {
@@ -206,27 +203,23 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
 
   /* Alertas */
   const agregarAlerta = useCallback(async (alerta: Omit<Alerta, "id">) => {
-    // TODO: Llamar a la API para crear la alerta
-    // try {
-    //   const nueva = await alertasAPI.crearAlerta(alerta);
-    //   setAlertas(prev => [nueva, ...prev]);
-    // } catch (error) {
-    //   console.error("Error creando alerta:", error);
-    //   throw error;
-    // }
-    console.warn("GESTAContext.agregarAlerta: No conectado al backend — datos no persisten");
-    setAlertas(prev => [{ ...alerta, id: Date.now() }, ...prev]);
+    try {
+      const nueva = await alertasAPI.crearAlerta(alerta);
+      setAlertas(prev => [nueva, ...prev]);
+    } catch (error) {
+      console.error("Error creando alerta:", error);
+      throw error;
+    }
   }, []);
 
   const resolverAlerta = useCallback(async (id: number) => {
-    // TODO: Llamar a la API para resolver la alerta
-    // try {
-    //   await alertasAPI.resolverAlerta(id);
-    //   setAlertas(prev => prev.map(a => a.id === id ? { ...a, estado: "resuelta" } : a));
-    // } catch (error) {
-    //   console.error("Error resolviendo alerta:", error);
-    // }
-    setAlertas(prev => prev.map(a => a.id === id ? { ...a, estado: "resuelta" } : a));
+    try {
+      await alertasAPI.resolverAlerta(id);
+      setAlertas(prev => prev.map(a => a.id === id ? { ...a, estado: "resuelta" } : a));
+    } catch (error) {
+      console.error("Error resolviendo alerta:", error);
+      throw error;
+    }
   }, []);
 
   function getAlertasActivas() {
@@ -235,32 +228,21 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
 
   /* Condiciones */
   const setCondicionEstudiante = useCallback(async (est: CondicionEstudiante) => {
-    // TODO: Llamar a la API para actualizar la condición del estudiante
-    // try {
-    //   await estudiantesAPI.setCondicion(est.estudianteId, est);
-    //   setCondiciones(prev => {
-    //     const exists = prev.findIndex(c => c.estudianteId === est.estudianteId);
-    //     if (exists >= 0) {
-    //       const updated = [...prev];
-    //       updated[exists] = est;
-    //       return updated;
-    //     }
-    //     return [...prev, est];
-    //   });
-    // } catch (error) {
-    //   console.error("Error actualizando condición:", error);
-    //   throw error;
-    // }
-    console.warn("GESTAContext.setCondicionEstudiante: No conectado al backend — datos no persisten");
-    setCondiciones(prev => {
-      const exists = prev.findIndex(c => c.estudianteId === est.estudianteId);
-      if (exists >= 0) {
-        const updated = [...prev];
-        updated[exists] = est;
-        return updated;
-      }
-      return [...prev, est];
-    });
+    try {
+      await estudiantesAPI.setCondicion(est.estudianteId, est);
+      setCondiciones(prev => {
+        const exists = prev.findIndex(c => c.estudianteId === est.estudianteId);
+        if (exists >= 0) {
+          const updated = [...prev];
+          updated[exists] = est;
+          return updated;
+        }
+        return [...prev, est];
+      });
+    } catch (error) {
+      console.error("Error actualizando condición:", error);
+      throw error;
+    }
   }, []);
 
   function getCondicion(estudianteId: number) {

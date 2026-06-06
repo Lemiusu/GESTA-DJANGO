@@ -6,7 +6,8 @@ import {
   IcoHome, IcoBook, IcoCheck, IcoBell, IcoEye, IcoMsg,
   isMobileWidth, TIPO_OBS_META, TIPO_MSG_META,
 } from "../../context/shared";
-import { estudianteAPI, calificacionesAPI, asistenciaAPI, observacionesAPI } from "../../services/api";
+import { estudianteAPI } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 
 /* ─── TIPOS ────────────────────────────────────────────────────── */
 type EstudiantePerfil = {
@@ -402,17 +403,29 @@ export default function DashboardEstudiante() {
 
   const ir = (ruta: string, id: string) => { setNavActivo(id); };
 
-  // TODO: Reemplazar con estudianteAPI.getPerfil(userId) cuando el backend esté conectado
+  const { user } = useAuth();
   const [estudiante, setEstudiante] = useState<EstudiantePerfil | null>(null);
 
   useEffect(() => {
-    // TODO: Reemplazar con estudianteAPI.getPerfil(userId) cuando el backend esté conectado
-    try {
-      // estudianteAPI.getPerfil(userId).then(setEstudiante);
-    } catch (err) {
-      console.warn("No se pudo cargar el perfil del estudiante:", err);
-    }
-  }, []);
+    if (!user?.perfil_id) return;
+    estudianteAPI.getPerfil(user.perfil_id)
+      .then(perfil => setEstudiante({
+        id: perfil.id,
+        nombre: perfil.nombre,
+        grado: perfil.grado,
+        jornada: perfil.jornada,
+        riesgo: perfil.riesgo,
+        promedio: perfil.promedio,
+        asistencia: perfil.asistencia,
+        materiasPerdidas: perfil.materiasPerdidas,
+        materias: (perfil.calificaciones || []).map((c: any) => ({
+          nombre: c.asignatura,
+          promedio: c.promedio ?? 0,
+          perdida: (c.promedio ?? 0) < 3,
+        })),
+      }))
+      .catch(err => console.warn("No se pudo cargar el perfil del estudiante:", err));
+  }, [user?.perfil_id]);
 
   const STAT_CARDS = estudiante ? [
     { label: "Promedio general", value: estudiante.promedio.toFixed(1), sub: "periodo actual", color: estudiante.promedio < 3 ? C.red : C.green },
