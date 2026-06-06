@@ -195,6 +195,8 @@ export const calificacionesAPI = {
     for (const c of data.cursos || []) {
       result[c.curso] = {
         abierto: false,
+        docente: c.docente || 'Sin docente',
+        materia: c.materia || 'Todas',
         actividades: (c.actividades || []).map((a: any) => ({
           id: a.id,
           nombre: a.nombre,
@@ -223,12 +225,12 @@ export const calificacionesAPI = {
       body: JSON.stringify({ cursoId, nombre: actividad.nombre, peso: actividad.peso }),
     });
   },
-  publicarNotas: async (actividadId: number) => {
+  publicarNotas: async (actividadId: number | string) => {
     return request<any>(`/calificaciones/actividades/${actividadId}/publicar/`, {
       method: "POST",
     });
   },
-  despublicarNotas: async (actividadId: number) => {
+  despublicarNotas: async (actividadId: number | string) => {
     return request<any>(`/calificaciones/actividades/${actividadId}/despublicar/`, {
       method: "POST",
     });

@@ -332,39 +332,59 @@ class CalificacionesCursosView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        docente = getattr(request.user, 'docente', None)
-        if not docente:
-            return Response({'detail': 'Usuario no es docente.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            docente = getattr(request.user, 'docente', None)
+            coordinador = getattr(request.user, 'coordinador', None)
+            
+            if not docente and not coordinador:
+                return Response({'detail': 'Usuario no es docente ni coordinador.'}, status=status.HTTP_403_FORBIDDEN)
 
-        cursos = Curso.objects.filter(docente_titular=docente).prefetch_related('estudiantes__usuario', 'asignaturas__actividades__calificaciones__estudiante')
-        resultado = []
-        for curso in cursos:
-            estudiantes = list(curso.estudiantes.all())
-            notas = {est.id: {} for est in estudiantes}
-            actividades = []
-            for asignatura in curso.asignaturas.all():
-                for actividad in asignatura.actividades.all():
-                    actividades.append({
-                        'id': actividad.id,
-                        'nombre': actividad.nombre,
-                        'peso': float(actividad.porcentaje),
-                        'publicada': actividad.estado == 'publicada',
-                    })
-                    for estudiante in estudiantes:
-                        calificacion = actividad.calificaciones.filter(estudiante=estudiante).first()
-                        notas[estudiante.id][actividad.id] = '' if not calificacion or calificacion.valor is None else str(calificacion.valor)
+            # Si es docente, filtrar solo sus cursos; si es coordinador, traer todos
+            if docente:
+                cursos = Curso.objects.filter(docente_titular=docente).prefetch_related('estudiantes__usuario', 'asignaturas__actividades__calificaciones__estudiante')
+            else:
+                cursos = Curso.objects.all().prefetch_related('estudiantes__usuario', 'asignaturas__actividades__calificaciones__estudiante')
+            
+            resultado = []
+            for curso in cursos:
+                estudiantes = list(curso.estudiantes.all())
+                notas = {str(est.id): {} for est in estudiantes}
+                actividades = []
+                for asignatura in curso.asignaturas.all():
+                    for actividad in asignatura.actividades.all():
+                        actividades.append({
+                            'id': str(actividad.id),
+                            'nombre': actividad.nombre,
+                            'peso': float(actividad.porcentaje),
+                            'publicada': actividad.estado == 'publicada',
+                        })
+                        for estudiante in estudiantes:
+                            calificacion = actividad.calificaciones.filter(estudiante=estudiante).first()
+                            valor = '' if not calificacion or calificacion.valor is None else str(calificacion.valor)
+                            notas[str(estudiante.id)][str(actividad.id)] = valor
 
-            resultado.append({
-                'curso_id': curso.id,
-                'curso': curso.nombre,
-                'actividades': actividades,
-                'estudiantes': [
-                    {'id': e.id, 'nombre': f'{e.usuario.first_name} {e.usuario.last_name}', 'condicion': e.descripcion_condicion if e.tiene_condicion_especial else None}
-                    for e in estudiantes
-                ],
-                'notas': notas,
-            })
-        return Response({'cursos': resultado})
+                docente_nombre = 'Sin docente'
+                if curso.docente_titular and hasattr(curso.docente_titular, 'usuario'):
+                    docente_nombre = f'{curso.docente_titular.usuario.first_name} {curso.docente_titular.usuario.last_name}'
+
+                resultado.append({
+                    'curso_id': str(curso.id),
+                    'curso': curso.nombre,
+                    'docente': docente_nombre,
+                    'materia': 'Todas',
+                    'actividades': actividades,
+                    'estudiantes': [
+                        {'id': str(e.id), 'nombre': f'{e.usuario.first_name} {e.usuario.last_name}', 'condicion': e.descripcion_condicion if e.tiene_condicion_especial else None}
+                        for e in estudiantes
+                    ],
+                    'notas': notas,
+                })
+            return Response({'cursos': resultado})
+        except Exception as e:
+            import traceback
+            print(f"Error en CalificacionesCursosView: {str(e)}")
+            traceback.print_exc()
+            return Response({'detail': f'Error cargando calificaciones: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class GuardarNotaView(APIView):
