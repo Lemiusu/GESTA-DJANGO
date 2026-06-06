@@ -39,7 +39,7 @@ export default function AsistenciaCoordinador() {
 
   const [navActivo,    setNavActivo]    = useState("asistencia");
   // TODO: Reemplazar con asistenciaAPI.getAsistenciaGrados() cuando el backend esté conectado
-  const [gradosAsistencia, setGradosAsistencia] = useState<GradoAsistencia[]>([]);
+  const [gradosAsistencia] = useState<GradoAsistencia[]>([]);
   const [gradoAbierto, setGradoAbierto] = useState<string|null>(null);
   const [cursoActivo,  setCursoActivo]  = useState<string|null>(null);
 
@@ -78,7 +78,6 @@ export default function AsistenciaCoordinador() {
           onNav={ir}
           usuario={nombreUsuario}
           subUsuario="Coordinador"
-          initials={inicialesUsuario}
         />
       )}
 

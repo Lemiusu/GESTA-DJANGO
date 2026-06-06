@@ -30,6 +30,12 @@ type OrdenDir = "asc"|"desc";
 
 const RIESGO_ORDEN: Record<string,number> = { rojo:0, amarillo:1, verde:2 };
 
+const TIPO_OBS_META: Record<string, { bg: string; color: string; label: string }> = {
+  "disciplina": { bg: "#fee2e2", color: "#dc2626", label: "Disciplina" },
+  "academica": { bg: "#fef3c7", color: "#d97706", label: "Académica" },
+  "comportamiento": { bg: "#e0e7ff", color: "#4f46e5", label: "Comportamiento" },
+};
+
 /* ─── PERFIL DEL ESTUDIANTE ───────────────────────────────────── */
 function PerfilEstudiante({
   est, onVolver, isMobile, calificaciones: calificacionesProp,
@@ -316,7 +322,7 @@ function PerfilEstudiante({
                 <div style={{ display:"grid", gap:8 }}>
                   {calificaciones.map((cal, i) => {
                     const color   = cal.promedio < 3 ? C.red   : cal.promedio < 4 ? C.amber   : C.green;
-                    const bgColor = cal.promedio < 3 ? C.redLig ht : cal.promedio < 4 ? C.amberLight : C.greenLight;
+                    const bgColor = cal.promedio < 3 ? C.redLight : cal.promedio < 4 ? C.amberLight : C.greenLight;
                     return (
                       <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", background:C.gray50, borderRadius:8, border:`1px solid ${C.gray100}` }}>
                         <span style={{ fontSize:13, fontWeight:500, color:C.gray700 }}>{cal.materia}</span>
@@ -520,7 +526,6 @@ export default function EstudiantesCoordinador() {
           onNav={ir}
           usuario={nombreUsuario}
           subUsuario="Coordinador"
-          initials={inicialesUsuario}
         />
       )}
 
