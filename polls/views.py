@@ -426,7 +426,13 @@ class CrearActividadView(APIView):
         if not curso_id or not nombre or peso is None:
             return Response({'detail': 'curso_id, nombre y peso son obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        curso = get_object_or_404(Curso, pk=curso_id)
+        try:
+            curso = Curso.objects.get(pk=curso_id)
+        except Curso.DoesNotExist:
+            return Response({'detail': f'Curso con ID {curso_id} no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'detail': f'Error buscando curso: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
         asignatura = curso.asignaturas.first()
         if not asignatura:
             asignatura = Asignatura.objects.create(curso=curso, docente=curso.docente_titular, nombre=f'Asignatura {curso.nombre}')
@@ -443,7 +449,7 @@ class CrearActividadView(APIView):
             estado='borrador',
             publicado_por=request.user,
         )
-        return Response({'id': actividad.id, 'nombre': actividad.nombre, 'peso': float(actividad.porcentaje), 'estado': actividad.estado})
+        return Response({'id': str(actividad.id), 'nombre': actividad.nombre, 'peso': float(actividad.porcentaje), 'estado': actividad.estado})
 
 
 class PublicarActividadView(APIView):

@@ -194,6 +194,7 @@ export const calificacionesAPI = {
     const result: Record<string, any> = {};
     for (const c of data.cursos || []) {
       result[c.curso] = {
+        curso_id: c.curso_id,
         abierto: false,
         docente: c.docente || 'Sin docente',
         materia: c.materia || 'Todas',

@@ -331,9 +331,14 @@ export default function CalificacionesCoordinador() {
     
     try {
       setEnviandoActividad(true);
-      // cursoSeleccionado es el nombre del curso, convertir a ID si es necesario
-      const cursoId = cursosFiltrados.length > 0 ? cursosFiltrados[0][0] : cursoSeleccionado;
-      await calificacionesAPI.crearActividad(parseInt(cursoId) || 0, actividad);
+      // Obtener el curso_id del curso seleccionado
+      const cursoObj = cursos[cursoSeleccionado];
+      if (!cursoObj || !cursoObj.curso_id) {
+        alert("No se pudo encontrar la ID del curso.");
+        return;
+      }
+      const cursoId = cursoObj.curso_id;
+      await calificacionesAPI.crearActividad(cursoId, actividad);
       
       // Recargar datos
       const data = await calificacionesAPI.getCursosConNotas();
