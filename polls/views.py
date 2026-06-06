@@ -262,7 +262,8 @@ class AsistenciaGradosView(APIView):
     def get(self, request):
         hoy = date.today()
         grados = Curso.objects.select_related('grado').prefetch_related(
-            'registros_asistencia__detalles__estudiante__usuario'
+            'registros_asistencia__detalles__estudiante__usuario',
+            'estudiantes__usuario'
         ).all()
 
         grados_map = {}
@@ -278,18 +279,40 @@ class AsistenciaGradosView(APIView):
             presentes = 0
             ausentes = 0
             total = 0
+            estudiantes_list = []
+            
             if registro:
-                total = registro.detalles.count()
-                presentes = registro.detalles.filter(estado__in=['presente', 'justificado']).count()
-                ausentes = registro.detalles.filter(estado='ausente').count()
+                detalles = registro.detalles.all()
+                total = detalles.count()
+                presentes = detalles.filter(estado__in=['presente', 'justificado']).count()
+                ausentes = detalles.filter(estado='ausente').count()
+                
+                # Construir lista de estudiantes con su estado
+                for detalle in detalles:
+                    est = detalle.estudiante
+                    estudiantes_list.append({
+                        'id': est.id,
+                        'nombre': f'{est.usuario.first_name} {est.usuario.last_name}' if est.usuario else 'Sin nombre',
+                        'estado': 'P' if detalle.estado in ['presente', 'justificado'] else 'A'
+                    })
+            else:
+                # Si no hay registro hoy, listar todos los estudiantes del curso como ausentes
+                for est in curso.estudiantes.all():
+                    total += 1
+                    estudiantes_list.append({
+                        'id': est.id,
+                        'nombre': f'{est.usuario.first_name} {est.usuario.last_name}' if est.usuario else 'Sin nombre',
+                        'estado': 'A'
+                    })
 
             grados_map[grado_nombre]['cursos'].append({
-                'curso_id': curso.id,
+                'id': curso.id,
                 'curso': curso.nombre,
                 'presentes': presentes,
                 'ausentes': ausentes,
                 'total': total,
                 'porcentaje_asistencia': round((presentes / total) * 100, 1) if total > 0 else 0,
+                'estudiantes': estudiantes_list,
             })
 
         return Response(list(grados_map.values()))

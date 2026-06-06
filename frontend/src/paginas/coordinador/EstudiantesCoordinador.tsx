@@ -607,7 +607,7 @@ export default function EstudiantesCoordinador() {
                   {/* Filtro grado */}
                   <select value={filtroGrado} onChange={e => setFiltroGrado(e.target.value)} style={S.select}>
                     <option value="Todos">Todos los grados</option>
-                    {grados.map(g => <option key={g} value={g}>Grado {g}</option>)}
+                    {grados.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
 
                   {/* Filtro riesgo */}
@@ -845,7 +845,7 @@ export default function EstudiantesCoordinador() {
                     onChange={e => setNuevoGrado(e.target.value)}
                     style={{ ...S.select, width:"100%", fontSize:13 }}
                   >
-                    {grados.map(g => <option key={g} value={g}>Grado {g}</option>)}
+                    {grados.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
 
