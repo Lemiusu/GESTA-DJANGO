@@ -1,17 +1,19 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useGESTA, type Mensaje } from "../context/GESTAContext";
+import { useAuth } from "../context/AuthContext";
 import {
   C, S, Avatar, Sidebar,
   NAV_DOCENTE, NAV_COORDINADOR, NAV_ACUDIENTE,
   TIPO_MSG_META,
   IcoHome, IcoCheck, IcoEdit, IcoEye, IcoMsg, IcoUsers,
 } from "../context/shared";
-// TODO: Descomentar cuando el backend esté conectado
-// import { mensajesAPI, alertasAPI, estudiantesAPI } from "../services/api";
+import { mensajesAPI, estudiantesAPI } from "../services/api";
 
 /* ─── CONFIG POR ROL ─────────────────────────────────────────────── */
-// TODO: Reemplazar datos hardcodeados de nombre/sub con datos dinámicos del contexto de autenticación / login response
+// CONFIG LEGACY - Ahora se construye dinámicamente desde AuthContext
+// Kept for reference but no longer used
+/*
 type RolConfig = {
   nombre: string; sub: string;
   navGroups: typeof NAV_DOCENTE;
@@ -45,24 +47,24 @@ const ROL_CONFIG_DEFAULTS: Record<string, Omit<RolConfig, "nombre" | "sub">> = {
   },
 };
 
-// TODO: Reemplazar con authContext.usuario.nombre y authContext.usuario.sub cuando el backend esté conectado
 const ROL_CONFIG: Record<string, RolConfig> = {
   docente: {
     ...ROL_CONFIG_DEFAULTS.docente,
-    nombre: "", // TODO: Reemplazar con authContext.usuario.nombre cuando el backend esté conectado
-    sub: "",    // TODO: Reemplazar con authContext.usuario.sub cuando el backend esté conectado
+    nombre: "",
+    sub: "",
   },
   coordinador: {
     ...ROL_CONFIG_DEFAULTS.coordinador,
-    nombre: "", // TODO: Reemplazar con authContext.usuario.nombre cuando el backend esté conectado
-    sub: "",    // TODO: Reemplazar con authContext.usuario.sub cuando el backend esté conectado
+    nombre: "",
+    sub: "",
   },
   acudiente: {
     ...ROL_CONFIG_DEFAULTS.acudiente,
-    nombre: "", // TODO: Reemplazar con authContext.usuario.nombre cuando el backend esté conectado
-    sub: "",    // TODO: Reemplazar con authContext.usuario.sub cuando el backend esté conectado
+    nombre: "",
+    sub: "",
   },
 };
+*/
 
 const DEST_LABEL: Record<string, string> = {
   todos: "Toda la comunidad", docente: "Todos los docentes",
@@ -109,12 +111,14 @@ function ModalCrearAlerta({
   isMobile,
   nombreUsuario,
   estudiantesAlerta,
+  enviando = false,
 }: {
   onEnviar: (mensajes: Omit<Mensaje, "id">[]) => void;
   onClose: () => void;
   isMobile: boolean;
   nombreUsuario: string;
   estudiantesAlerta: { id:number; nombre:string; grado:string; docente:string; acudiente:string }[];
+  enviando?: boolean;
 }) {
   const [busqueda,     setBusqueda]     = useState("");
   const [estudianteId, setEstudianteId] = useState<number | null>(null);
@@ -339,14 +343,16 @@ function ModalCrearAlerta({
             {/* Botones */}
             <div style={{ display:"flex", gap:10, justifyContent:"flex-end", paddingTop:4 }}>
               <button onClick={() => setPaso(1)}
-                style={{ fontSize:13, padding:"9px 18px", borderRadius:8, border:`1px solid ${C.gray200}`, background:C.white, color:C.gray500, cursor:"pointer", fontFamily:"inherit" }}>
+                style={{ fontSize:13, padding:"9px 18px", borderRadius:8, border:`1px solid ${C.gray200}`, background:C.white, color:C.gray500, cursor:"pointer", fontFamily:"inherit" }}
+                disabled={enviando}>
                 ← Editar
               </button>
               <button
                 onClick={() => onEnviar(construirMensajes())}
-                style={{ fontSize:13, padding:"9px 18px", borderRadius:8, border:"none", background:C.red, color:C.white, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}
+                style={{ fontSize:13, padding:"9px 18px", borderRadius:8, border:"none", background:C.red, color:C.white, fontWeight:700, cursor:enviando?"not-allowed":"pointer", fontFamily:"inherit", opacity:enviando?0.6:1 }}
+                disabled={enviando}
               >
-                Enviar alerta
+                {enviando ? "Enviando..." : "Enviar alerta"}
               </button>
             </div>
           </div>
@@ -373,10 +379,25 @@ function Toast({ mensaje, onClose }: { mensaje: string; onClose: () => void }) {
 export default function Mensajes() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
 
   const pathRol = location.pathname.replace("/dashboard/mensajes-", "");
   const rol     = ["docente","coordinador","acudiente"].includes(pathRol) ? pathRol : "docente";
-  const config  = ROL_CONFIG[rol] || ROL_CONFIG.docente;
+
+  // Dinámico: obtener nombre del usuario autenticado
+  const config = {
+    nombre: user ? `${user.first_name} ${user.last_name}` : "Usuario",
+    sub: user?.id ?? "",
+    navGroups: rol === "coordinador" ? NAV_COORDINADOR : rol === "acudiente" ? NAV_ACUDIENTE : NAV_DOCENTE,
+    rolFiltro: rol,
+    puedeEnviar: rol !== "acudiente",
+    puedeCrearAlertas: rol === "coordinador",
+    destinatarios: rol === "docente" 
+      ? ["coordinador", "acudiente", "estudiante", "todos"]
+      : rol === "coordinador"
+      ? ["todos", "docente", "acudiente", "estudiante"]
+      : [],
+  };
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -387,7 +408,6 @@ export default function Mensajes() {
   }, []);
 
   const { getMensajesPara, marcarMensajeLeido, agregarMensaje } = useGESTA();
-  // TODO: Reemplazar con mensajesAPI.getMensajesPara(rol) cuando el backend esté conectado
   const todos = getMensajesPara(config.rolFiltro);
 
   const [filtro,          setFiltro]          = useState("todos");
@@ -397,20 +417,21 @@ export default function Mensajes() {
   const [vistaLista,      setVistaLista]       = useState(true);
   const [showModalAlerta, setShowModalAlerta]  = useState(false);
   const [toast,           setToast]            = useState<string | null>(null);
+  const [enviando,        setEnviando]         = useState(false);
 
   // ── Estado dinámico para estudiantes de alerta ──
-  // TODO: Reemplazar con estudiantesAPI.getEstudiantesAlerta() para obtener catálogo de estudiantes
   const [estudiantesAlerta, setEstudiantesAlerta] = useState<{ id:number; nombre:string; grado:string; docente:string; acudiente:string }[]>([]);
 
   useEffect(() => {
-    // TODO: Reemplazar con estudiantesAPI.getEstudiantesAlerta() para obtener catálogo de estudiantes
-    try {
-      // const data = await estudiantesAPI.getEstudiantesAlerta();
-      // setEstudiantesAlerta(data);
-      console.warn("Mensajes: estudiantesAPI.getEstudiantesAlerta() no implementado — usando estado vacío");
-    } catch (err) {
-      console.warn("Mensajes: Error cargando estudiantes para alertas", err);
-    }
+    const cargarEstudiantes = async () => {
+      try {
+        const data = await estudiantesAPI.getEstudiantesAlerta();
+        setEstudiantesAlerta(data);
+      } catch (err) {
+        console.warn("Error cargando estudiantes para alertas:", err);
+      }
+    };
+    cargarEstudiantes();
   }, []);
 
   const filtered = filtro === "todos"
@@ -422,33 +443,65 @@ export default function Mensajes() {
 
   function handleSeleccionar(m: Mensaje) {
     setSeleccionado(m);
-    // TODO: Reemplazar con mensajesAPI.marcarLeido(id) cuando el backend esté conectado
     marcarMensajeLeido(m.id);
     setRedactar(false);
     if (isMobile) setVistaLista(false);
   }
 
-  function handleEnviar() {
+  async function handleEnviar() {
     if (!nuevoMsg.asunto.trim() || !nuevoMsg.contenido.trim()) return;
-    // TODO: Reemplazar con mensajesAPI.enviarMensaje() para persistir en backend
-    agregarMensaje({
-      de: config.nombre, rolDe: rol,
-      para: nuevoMsg.para, asunto: nuevoMsg.asunto, contenido: nuevoMsg.contenido,
-      fecha: "Ahora", leido: false, tipo: "mensaje",
-    });
-    setNuevoMsg({ para:"todos", asunto:"", contenido:"" });
-    setRedactar(false);
-    if (isMobile) setVistaLista(true);
+    
+    try {
+      setEnviando(true);
+      // Enviar al backend usando rol
+      await mensajesAPI.enviarMensajePorRol({
+        destinatarios: nuevoMsg.para,
+        asunto: nuevoMsg.asunto,
+        contenido: nuevoMsg.contenido,
+      });
+      
+      // Agregar localmente para visualización inmediata
+      await agregarMensaje({
+        de: config.nombre, rolDe: rol,
+        para: nuevoMsg.para, asunto: nuevoMsg.asunto, contenido: nuevoMsg.contenido,
+        fecha: "Ahora", leido: false, tipo: "mensaje",
+      });
+      
+      setNuevoMsg({ para:"todos", asunto:"", contenido:"" });
+      setRedactar(false);
+      if (isMobile) setVistaLista(true);
+      setToast(`Mensaje enviado a ${nuevoMsg.para === "todos" ? "toda la comunidad" : nuevoMsg.para}`);
+    } catch (error) {
+      console.error("Error enviando mensaje:", error);
+      setToast("Error al enviar el mensaje. Intenta de nuevo.");
+    } finally {
+      setEnviando(false);
+    }
   }
 
   // Recibe el array de mensajes generados por el modal y los agrega al contexto
-  function handleEnviarAlerta(mensajes: Omit<Mensaje, "id">[]) {
-    // TODO: Reemplazar con alertasAPI.crearAlerta() para crear alerta en backend
-    mensajes.forEach(m => agregarMensaje(m));
-    setShowModalAlerta(false);
-    setToast(`Alerta enviada a ${mensajes.length} destinatario(s)`);
-    // Cambia el filtro a "alerta" para que el coordinador vea lo que acaba de crear
-    setFiltro("alerta");
+  async function handleEnviarAlerta(mensajes: Omit<Mensaje, "id">[]) {
+    try {
+      setEnviando(true);
+      // Enviar alertas al backend
+      for (const msg of mensajes) {
+        await mensajesAPI.enviarMensajePorRol({
+          destinatarios: msg.para,
+          asunto: msg.asunto,
+          contenido: msg.contenido,
+        });
+        await agregarMensaje(msg);
+      }
+      
+      setShowModalAlerta(false);
+      setToast(`Alerta enviada a ${mensajes.length} destinatario(s)`);
+      setFiltro("alerta");
+    } catch (error) {
+      console.error("Error enviando alerta:", error);
+      setToast("Error al enviar la alerta. Intenta de nuevo.");
+    } finally {
+      setEnviando(false);
+    }
   }
 
   /* ── PANEL LISTA ── */
@@ -574,12 +627,13 @@ export default function Mensajes() {
             </div>
             <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
               <button style={{ ...S.btnPrimary, background:"transparent", color:C.gray500, border:`1px solid ${C.gray200}` }}
-                onClick={() => { setRedactar(false); if (isMobile) setVistaLista(true); }}>
+                onClick={() => { setRedactar(false); if (isMobile) setVistaLista(true); }}
+                disabled={enviando}>
                 Cancelar
               </button>
               <button style={S.btnPrimary} onClick={handleEnviar}
-                disabled={!nuevoMsg.asunto.trim() || !nuevoMsg.contenido.trim()}>
-                Enviar mensaje
+                disabled={!nuevoMsg.asunto.trim() || !nuevoMsg.contenido.trim() || enviando}>
+                {enviando ? "Enviando..." : "Enviar mensaje"}
               </button>
             </div>
           </div>
@@ -650,6 +704,7 @@ export default function Mensajes() {
           isMobile={isMobile}
           nombreUsuario={config.nombre}
           estudiantesAlerta={estudiantesAlerta}
+          enviando={enviando}
         />
       )}
 

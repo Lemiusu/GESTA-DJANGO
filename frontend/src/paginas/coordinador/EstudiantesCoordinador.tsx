@@ -3,9 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useGESTA } from "../../context/GESTAContext";
 import {
   C, S, SM, Semaforo, Avatar, Sidebar, BottomNav,
-  IcoHome, IcoUsers, IcoBell, IcoEye, IcoMsg,
   NAV_COORDINADOR, BOTTOM_NAV_COORDINADOR,
-  isMobileWidth, TIPO_OBS_META, BadgeCondicion, TipoPill,
 } from "../../context/shared";
 import { estudiantesAPI } from "../../services/api";
 
@@ -318,7 +316,7 @@ function PerfilEstudiante({
                 <div style={{ display:"grid", gap:8 }}>
                   {calificaciones.map((cal, i) => {
                     const color   = cal.promedio < 3 ? C.red   : cal.promedio < 4 ? C.amber   : C.green;
-                    const bgColor = cal.promedio < 3 ? C.redLight : cal.promedio < 4 ? C.amberLight : C.greenLight;
+                    const bgColor = cal.promedio < 3 ? C.redLig ht : cal.promedio < 4 ? C.amberLight : C.greenLight;
                     return (
                       <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", background:C.gray50, borderRadius:8, border:`1px solid ${C.gray100}` }}>
                         <span style={{ fontSize:13, fontWeight:500, color:C.gray700 }}>{cal.materia}</span>
@@ -346,7 +344,7 @@ function PerfilEstudiante({
 /* ─── COMPONENTE PRINCIPAL ────────────────────────────────────── */
 export default function EstudiantesCoordinador() {
   const navigate = useNavigate();
-  const { getAlertasActivas, getMensajesNoLeidos, getCondicion } = useGESTA();
+  const { getAlertasActivas, getMensajesNoLeidos } = useGESTA();
 
   /* ── Responsive ── */
   const [isMobile, setIsMobile] = useState(false);
@@ -363,7 +361,7 @@ export default function EstudiantesCoordinador() {
   const [estudiantes, setEstudiantes] = useState<Estudiante[]>([]);
   const [grados, setGrados] = useState<string[]>([]);
   // TODO: Reemplazar con estudiantesAPI.getPerfilEstudiante(id) cuando el backend esté conectado
-  const [calificaciones, setCalificaciones] = useState<Record<number, CalificacionMateria[]>>({});
+  const [calificaciones] = useState<Record<number, CalificacionMateria[]>>({});
 
   useEffect(() => {
     estudiantesAPI.getEstudiantes()

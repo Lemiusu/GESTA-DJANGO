@@ -5,7 +5,9 @@ import {
   NAV_DOCENTE, BOTTOM_NAV_DOCENTE,
   isMobileWidth,
 } from "../../context/shared";
-import { asistenciaAPI } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
+import { useGESTA } from "../../context/GESTAContext";
+import { asistenciaAPI, mensajesAPI } from "../../services/api";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
 interface EstudianteAsistencia {
@@ -135,10 +137,13 @@ function StatsBar({ presentes, total, filtro, setFiltro, isMobile }: {
 }
 
 /* ─── CONTENIDO CURSO ────────────────────────────────────────────── */
-function ContenidoCurso({ nombreCurso, data, isMobile }: {
+function ContenidoCurso({ cursoId, nombreCurso, data, isMobile, onError, onSuccess }: {
+  cursoId: number;
   nombreCurso: string;
   data: CursoAsistencia;
   isMobile: boolean;
+  onError: (msg: string) => void;
+  onSuccess: (msg: string) => void;
 }) {
   const [estados, setEstados] = useState<Record<number, string>>(() => {
     const init: Record<number, string> = {};
@@ -146,6 +151,7 @@ function ContenidoCurso({ nombreCurso, data, isMobile }: {
     return init;
   });
   const [guardado, setGuardado] = useState(false);
+  const [cargando, setCargando] = useState(false);
   const [modal,    setModal]    = useState(false);
   const [filtro,   setFiltro]   = useState("todos");
 
@@ -161,10 +167,49 @@ function ContenidoCurso({ nombreCurso, data, isMobile }: {
   const ausentes   = Object.values(estados).filter(v => v === "A").length;
   const filtrados  = data.estudiantes.filter(e => filtro === "todos" || estados[e.id] === filtro);
 
-  const guardarRegistro = () => {
-    // TODO: Reemplazar con asistenciaAPI.guardarRegistro() para persistir en backend
-    setGuardado(true);
-    setModal(false);
+  const guardarRegistro = async () => {
+    setCargando(true);
+    try {
+      const registros = Object.entries(estados).map(([estudianteId, estado]) => ({
+        estudianteId,
+        estado: estado === "P" ? "presente" : "ausente",
+      }));
+
+      await asistenciaAPI.guardarRegistro(String(cursoId), registros);
+      
+      // Enviar notificaciones a acudientes de estudiantes ausentes
+      const estudiantesAusentes = Object.entries(estados)
+        .filter(([_, estado]) => estado === "A")
+        .map(([estudianteId]) => {
+          const est = data.estudiantes.find(e => String(e.id) === estudianteId);
+          return est;
+        })
+        .filter(Boolean);
+
+      if (estudiantesAusentes.length > 0) {
+        const nombresAusentes = estudiantesAusentes.map(e => e!.nombre).join(", ");
+        try {
+          await mensajesAPI.enviarMensaje({
+            destinatarios: ["acudiente"], // Se enviará a acudientes de los estudiantes
+            asunto: `Notificación de inasistencia - ${nombreCurso}`,
+            contenido: `Se registró inasistencia para los siguientes estudiantes el ${new Date().toLocaleDateString('es-CO')}: ${nombresAusentes}. Por favor, contacte al docente si tiene alguna inquietud.`,
+          });
+        } catch (notifError) {
+          console.warn("No se pudieron enviar notificaciones a acudientes:", notifError);
+          // No lanzar error aquí para no afectar el guardado exitoso de asistencia
+        }
+      }
+
+      setGuardado(true);
+      setModal(false);
+      onSuccess(`Asistencia de ${nombreCurso} guardada exitosamente`);
+    } catch (error: any) {
+      const errorMsg = error?.message || "Error al guardar asistencia";
+      onError(errorMsg);
+      console.error("Error guardando asistencia:", error);
+    } finally {
+      setCargando(false);
+    }
   };
 
   if (isMobile) {
@@ -174,11 +219,11 @@ function ContenidoCurso({ nombreCurso, data, isMobile }: {
           <StatsBar presentes={presentes} total={data.estudiantes.length} filtro={filtro} setFiltro={setFiltro} isMobile={true} />
           {!guardado ? (
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={() => marcarTodos("P")} style={{ flex: 1, padding: "8px", borderRadius: 8, border: `1px solid ${C.gray200}`, background: C.greenLight, color: C.green, fontSize: 12, cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>
+              <button onClick={() => marcarTodos("P")} disabled={cargando} style={{ flex: 1, padding: "8px", borderRadius: 8, border: `1px solid ${C.gray200}`, background: C.greenLight, color: C.green, fontSize: 12, cursor: cargando ? "not-allowed" : "pointer", fontWeight: 600, fontFamily: "inherit", opacity: cargando ? 0.6 : 1 }}>
                 Todos presentes
               </button>
-              <button onClick={() => setModal(true)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", background: C.blue, color: C.white, fontSize: 12, cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>
-                Guardar
+              <button onClick={() => setModal(true)} disabled={cargando} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", background: C.blue, color: C.white, fontSize: 12, cursor: cargando ? "not-allowed" : "pointer", fontWeight: 600, fontFamily: "inherit", opacity: cargando ? 0.6 : 1 }}>
+                {cargando ? "Guardando..." : "Guardar"}
               </button>
             </div>
           ) : (
@@ -211,7 +256,7 @@ function ContenidoCurso({ nombreCurso, data, isMobile }: {
             </div>
           </div>
         ))}
-        {modal && <ModalConfirmar curso={nombreCurso} ausentes={ausentes} onConfirm={guardarRegistro} onClose={() => setModal(false)} />}
+        {modal && <ModalConfirmar curso={nombreCurso} ausentes={ausentes} onConfirm={guardarRegistro} onClose={() => !cargando && setModal(false)} />}
       </div>
     );
   }
@@ -228,9 +273,9 @@ function ContenidoCurso({ nombreCurso, data, isMobile }: {
             <span style={{ fontSize: 12, background: C.greenLight, color: C.green, padding: "5px 14px", borderRadius: 20, fontWeight: 600 }}>✓ Registro guardado</span>
           ) : (
             <>
-              <button onClick={() => marcarTodos("P")} style={{ ...S.btnSm }}>Todos presentes</button>
-              <button onClick={() => marcarTodos("A")} style={{ ...S.btnSm }}>Todos ausentes</button>
-              <button onClick={() => setModal(true)}   style={{ ...S.btnPrimary }}>Guardar registro</button>
+              <button onClick={() => marcarTodos("P")} disabled={cargando} style={{ ...S.btnSm, opacity: cargando ? 0.6 : 1, cursor: cargando ? "not-allowed" : "pointer" }}>Todos presentes</button>
+              <button onClick={() => marcarTodos("A")} disabled={cargando} style={{ ...S.btnSm, opacity: cargando ? 0.6 : 1, cursor: cargando ? "not-allowed" : "pointer" }}>Todos ausentes</button>
+              <button onClick={() => setModal(true)} disabled={cargando} style={{ ...S.btnPrimary, opacity: cargando ? 0.6 : 1, cursor: cargando ? "not-allowed" : "pointer" }}>{cargando ? "Guardando..." : "Guardar registro"}</button>
             </>
           )}
         </div>
@@ -273,17 +318,20 @@ function ContenidoCurso({ nombreCurso, data, isMobile }: {
           ))}
         </tbody>
       </table>
-      {modal && <ModalConfirmar curso={nombreCurso} ausentes={ausentes} onConfirm={guardarRegistro} onClose={() => setModal(false)} />}
+      {modal && <ModalConfirmar curso={nombreCurso} ausentes={ausentes} onConfirm={guardarRegistro} onClose={() => !cargando && setModal(false)} />}
     </div>
   );
 }
 
 /* ─── ACORDEÓN CURSO ─────────────────────────────────────────────── */
-function AcordeonCurso({ nombre, data, onToggle, isMobile }: {
+function AcordeonCurso({ cursoId, nombre, data, onToggle, isMobile, onError, onSuccess }: {
+  cursoId: number;
   nombre: string;
   data: CursoAsistencia;
   onToggle: () => void;
   isMobile: boolean;
+  onError: (msg: string) => void;
+  onSuccess: (msg: string) => void;
 }) {
   return (
     <div style={{ background: C.white, border: `1px solid ${C.gray200}`, borderRadius: 12, overflow: "hidden", marginBottom: isMobile ? 10 : 12 }}>
@@ -306,20 +354,20 @@ function AcordeonCurso({ nombre, data, onToggle, isMobile }: {
           </div>
         </div>
       </button>
-      {data.abierto && <ContenidoCurso nombreCurso={nombre} data={data} isMobile={isMobile} />}
+      {data.abierto && <ContenidoCurso cursoId={cursoId} nombreCurso={nombre} data={data} isMobile={isMobile} onError={onError} onSuccess={onSuccess} />}
     </div>
   );
 }
 
 /* ─── PANEL HISTORIAL ────────────────────────────────────────────── */
-function PanelHistorial({ historial, isMobile }: { historial: HistorialEntry[]; isMobile: boolean }) {
+function PanelHistorial({ historial, isMobile, nombreCurso }: { historial: HistorialEntry[]; isMobile: boolean; nombreCurso?: string }) {
   return (
     <div style={{ background: C.white, border: `1px solid ${C.gray200}`, borderRadius: 12, overflow: "hidden" }}>
       <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.gray100}` }}>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.gray800 }}>Historial reciente — Grado 601</p>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.gray800 }}>Historial reciente {nombreCurso ? `— ${nombreCurso}` : ""}</p>
       </div>
       {historial.length === 0 ? (
-        <div style={{ padding: "24px", textAlign: "center", color: C.gray400, fontSize: 13 }}>Sin historial disponible hasta que el backend esté conectado.</div>
+        <div style={{ padding: "24px", textAlign: "center", color: C.gray400, fontSize: 13 }}>Sin historial de asistencia disponible.</div>
       ) : isMobile ? (
         <div>
           {historial.map((h, i) => {
@@ -383,19 +431,20 @@ function PanelHistorial({ historial, isMobile }: { historial: HistorialEntry[]; 
 /* ─── COMPONENTE PRINCIPAL ───────────────────────────────────────── */
 export default function RegistroAsistencia() {
   const navigate  = useNavigate();
+  const auth = useAuth();
+  const gesta = useGESTA();
   const [navActivo, setNavActivo] = useState("asistencia");
 
-  // TODO: Reemplazar con asistenciaAPI.getRegistroHoy(cursoId) cuando el backend esté conectado
-  const [cursos,    setCursos]    = useState<Record<string, CursoAsistencia>>({});
-
-  // TODO: Reemplazar con asistenciaAPI.getHistorial(cursoId) cuando el backend esté conectado
+  // Estado local para la UI
+  const [cursos, setCursos] = useState<Record<string, CursoAsistencia>>({});
   const [historial, setHistorial] = useState<HistorialEntry[]>([]);
-
-  const [tab,       setTab]       = useState("hoy");
+  const [tab, setTab] = useState("hoy");
   const [isMobile, setIsMobile] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     const breakpoint = 1280; 
-    
     const handleResize = () => {
       setIsMobile(window.innerWidth < breakpoint);
     };
@@ -404,40 +453,102 @@ export default function RegistroAsistencia() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Cargar datos desde la API al montar el componente
+  // Cargar cursos del usuario autenticado
   useEffect(() => {
-    // TODO: Reemplazar con asistenciaAPI.getRegistroHoy(cursoId) cuando el backend esté conectado
-    const cursoId = 1; // TODO: Obtener del contexto de autenticación
-    try {
-      asistenciaAPI.getRegistroHoy(cursoId).then((data) => {
-        setCursos(data as Record<string, CursoAsistencia>);
-      }).catch(() => {
-        console.warn("No se pudieron cargar los cursos de asistencia desde la API. Se mostrará estado vacío hasta que el backend esté conectado.");
-      });
-    } catch (e) {
-      console.warn("No se pudieron cargar los cursos de asistencia desde la API:", e);
+    if (!auth.user) return;
+
+    // Obtener docenteId del usuario autenticado
+    const docenteId = auth.user.perfil_id ? parseInt(auth.user.perfil_id) : null;
+    if (!docenteId) {
+      console.warn("No se pudo obtener docenteId del usuario autenticado");
+      return;
     }
 
-    // TODO: Reemplazar con asistenciaAPI.getHistorial(cursoId) cuando el backend esté conectado
-    try {
-      asistenciaAPI.getHistorial(cursoId).then((data) => {
-        setHistorial(data as HistorialEntry[]);
-      }).catch(() => {
-        console.warn("No se pudo cargar el historial de asistencia desde la API. Se mostrará estado vacío hasta que el backend esté conectado.");
-      });
-    } catch (e) {
-      console.warn("No se pudo cargar el historial de asistencia desde la API:", e);
-    }
-  }, []);
+    // Cargar cursos usando GESTAContext
+    gesta.cargarCursos(docenteId).catch(err => {
+      console.error("Error cargando cursos:", err);
+      setError("No se pudieron cargar los cursos");
+    });
+  }, [auth.user?.id]); // Dependencia en auth.user.id para evitar bucles
 
-  // TODO: Reemplazar con el nombre del docente obtenido del contexto de autenticación
-  const nombreDocente = "Docente";
+  // Una vez que los cursos están cargados, cargar asistencia para cada uno
+  useEffect(() => {
+    if (gesta.cursos.length === 0) return;
+
+    Promise.all(
+      gesta.cursos.map(curso =>
+        asistenciaAPI.getRegistroHoy(curso.id)
+          .then(data => {
+            // Mapear datos de API a estructura esperada
+            const cursoProcesado = {
+              abierto: false,
+              estudiantes: (data as any)[curso.nombre]?.estudiantes || 
+                          curso.estudiantes.map(e => ({
+                            id: e.id,
+                            nombre: e.nombre,
+                            condicion: e.condicion,
+                          })) || [],
+            };
+            return { nombre: curso.nombre, data: cursoProcesado, cursoId: curso.id };
+          })
+          .catch(err => {
+            console.error(`Error cargando asistencia para ${curso.nombre}:`, err);
+            return { 
+              nombre: curso.nombre, 
+              data: { abierto: false, estudiantes: curso.estudiantes || [] },
+              cursoId: curso.id
+            };
+          })
+      )
+    ).then(resultados => {
+      const cursosMap: Record<string, CursoAsistencia> = {};
+      resultados.forEach(r => {
+        cursosMap[r.nombre] = r.data;
+      });
+      setCursos(cursosMap);
+    });
+  }, [gesta.cursos]);
+
+  // Cargar historial de asistencia cuando los cursos están disponibles
+  useEffect(() => {
+    if (gesta.cursos.length === 0) return;
+
+    // Cargar historial para el primer curso disponible (o todos)
+    const primerCurso = gesta.cursos[0];
+    asistenciaAPI.getHistorial(String(primerCurso.id))
+      .then(data => {
+        // Mapear datos del historial
+        const historialMapeado = (data || []).map((h: any) => ({
+          fecha: h.fecha,
+          curso: h.curso,
+          presentes: h.presentes || 0,
+          ausentes: h.ausentes || 0,
+        }));
+        setHistorial(historialMapeado);
+      })
+      .catch(err => {
+        console.warn("No se pudo cargar el historial de asistencia:", err);
+        setHistorial([]);
+      });
+  }, [gesta.cursos]);
 
   const ir = (ruta: string, id?: string) => { if (id) setNavActivo(id); navigate(`/dashboard/${ruta}`); };
 
   const toggleCurso = (nombre: string) => {
     setCursos(prev => ({ ...prev, [nombre]: { ...prev[nombre], abierto: !prev[nombre].abierto } }));
   };
+
+  const handleError = (msg: string) => {
+    setError(msg);
+    setTimeout(() => setError(null), 5000);
+  };
+
+  const handleSuccess = (msg: string) => {
+    setSuccess(msg);
+    setTimeout(() => setSuccess(null), 5000);
+  };
+
+  const nombreDocente = auth.nombreCompleto();
 
   return (
     <div style={{ display: "flex", height: "100vh", background: C.gray100, fontFamily: "'Inter','Segoe UI',sans-serif", fontSize: 14, overflow: "hidden" }}>
@@ -480,16 +591,40 @@ export default function RegistroAsistencia() {
 
           {tab === "hoy" && (
             <div>
-              {Object.entries(cursos).map(([nombre, data]) => (
-                <AcordeonCurso key={nombre} nombre={nombre} data={data} onToggle={() => toggleCurso(nombre)} isMobile={isMobile} />
-              ))}
+              {error && (
+                <div style={{ background: C.redLight, border: `1px solid #fca5a5`, borderRadius: 8, padding: "12px 14px", marginBottom: 16, color: C.red, fontSize: 13 }}>
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div style={{ background: C.greenLight, border: `1px solid #86efac`, borderRadius: 8, padding: "12px 14px", marginBottom: 16, color: C.green, fontSize: 13 }}>
+                  {success}
+                </div>
+              )}
+              {Object.entries(cursos).map(([nombre, data]) => {
+                // Encontrar el cursoId correspondiente
+                const curso = gesta.cursos.find(c => c.nombre === nombre);
+                const cursoId = curso?.id || 0;
+                return (
+                  <AcordeonCurso 
+                    key={nombre} 
+                    cursoId={cursoId}
+                    nombre={nombre} 
+                    data={data} 
+                    onToggle={() => toggleCurso(nombre)} 
+                    isMobile={isMobile}
+                    onError={handleError}
+                    onSuccess={handleSuccess}
+                  />
+                );
+              })}
               {Object.keys(cursos).length === 0 && (
                 <div style={{ padding: "24px", textAlign: "center", color: C.gray400, fontSize: 13 }}>Sin cursos disponibles hasta que el backend esté conectado.</div>
               )}
             </div>
           )}
 
-          {tab === "historial" && <PanelHistorial historial={historial} isMobile={isMobile} />}
+          {tab === "historial" && <PanelHistorial historial={historial} isMobile={isMobile} nombreCurso={gesta.cursos[0]?.nombre} />}
         </main>
 
         {isMobile && (

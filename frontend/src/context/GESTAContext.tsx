@@ -5,10 +5,22 @@ import {
   mensajesAPI,
   alertasAPI,
   estudiantesAPI,
+  docenteAPI,
 } from "../services/api";
 
 /* ─── TIPOS ─────────────────────────────────────────────────────── */
 export type NivelRiesgo = "verde" | "amarillo" | "rojo";
+
+export interface Curso {
+  id: number;
+  nombre: string;
+  grado: string;
+  estudiantes: Array<{
+    id: number;
+    nombre: string;
+    condicion: string | null;
+  }>;
+}
 
 export interface Observacion {
   id: number;
@@ -75,6 +87,12 @@ export interface AsistenciaRegistro {
 
 /* ─── CONTEXT TYPE ───────────────────────────────────────────────── */
 interface GESTAContextType {
+  // Usuario autenticado
+  docenteId: number | null;
+  cursos: Curso[];
+  loadingCursos: boolean;
+  cargarCursos: (docenteId: number) => Promise<void>;
+
   // Observaciones
   observaciones: Observacion[];
   loadingObservaciones: boolean;
@@ -114,6 +132,11 @@ interface GESTAContextType {
 const GESTAContext = createContext<GESTAContextType | null>(null);
 
 export function GESTAProvider({ children }: { children: ReactNode }) {
+  // Usuario autenticado
+  const [docenteId, setDocenteId] = useState<number | null>(null);
+  const [cursos, setCursos] = useState<Curso[]>([]);
+  const [loadingCursos, setLoadingCursos] = useState(false);
+
   const [observaciones, setObservaciones] = useState<Observacion[]>([]);
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [alertas, setAlertas] = useState<Alerta[]>([]);
@@ -125,6 +148,21 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
   const [loadingMensajes, setLoadingMensajes] = useState(false);
   const [loadingAlertas, setLoadingAlertas] = useState(false);
   const [loadingAsistencia] = useState(false);
+
+  /* ─── Cargar cursos del docente ─── */
+  const cargarCursos = useCallback(async (docenteIdParam: number) => {
+    try {
+      setLoadingCursos(true);
+      setDocenteId(docenteIdParam);
+      const cursosData = await docenteAPI.getCursos(docenteIdParam);
+      setCursos(cursosData);
+    } catch (error) {
+      console.error("Error cargando cursos:", error);
+      setCursos([]);
+    } finally {
+      setLoadingCursos(false);
+    }
+  }, []);
 
   /* ─── Carga inicial de datos desde el backend ─── */
   const cargarDatosIniciales = useCallback(async (rol: string) => {
@@ -172,12 +210,19 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
   /* Mensajes */
   const agregarMensaje = useCallback(async (msg: Omit<Mensaje, "id">) => {
     try {
-      const nuevo = await mensajesAPI.enviarMensaje({
-        destinatarios: msg.destinatarios ?? [msg.para],
+      // Enviar mensaje al backend usando rol
+      await mensajesAPI.enviarMensajePorRol({
+        destinatarios: msg.para, // "docente", "coordinador", "todos", etc.
         asunto: msg.asunto,
         contenido: msg.contenido,
       });
-      setMensajes(prev => [nuevo, ...prev]);
+      
+      // Agregar localmente con ID generado por el backend
+      const mensajeConId: Mensaje = {
+        id: Math.random(), // Temporal hasta que backend retorne el ID real
+        ...msg,
+      };
+      setMensajes(prev => [mensajeConId, ...prev]);
     } catch (error) {
       console.error("Error enviando mensaje:", error);
       throw error;
@@ -256,6 +301,7 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
 
   return (
     <GESTAContext.Provider value={{
+      docenteId, cursos, loadingCursos, cargarCursos,
       observaciones, loadingObservaciones, agregarObservacion, getObservacionesEstudiante,
       mensajes, loadingMensajes, agregarMensaje, marcarMensajeLeido, getMensajesPara, getMensajesNoLeidos,
       alertas, loadingAlertas, agregarAlerta, resolverAlerta, getAlertasActivas,

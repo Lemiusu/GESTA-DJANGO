@@ -717,6 +717,24 @@ class ObservadorCoordinadorView(APIView):
         return Response(serializer.data)
 
 
+class UsuariosView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        rol = request.query_params.get('rol')
+        if not rol:
+            return Response({'detail': 'Parámetro rol requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        usuarios = Usuario.objects.filter(rol=rol).values('id', 'first_name', 'last_name')
+        return Response([
+            {
+                'id': str(u['id']),
+                'nombre': f'{u["first_name"]} {u["last_name"]}'
+            }
+            for u in usuarios
+        ])
+
+
 def index(request):
     return Response({'detail': "API raíz del módulo polls."})
 
