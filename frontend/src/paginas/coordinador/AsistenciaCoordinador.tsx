@@ -5,8 +5,7 @@ import {
   NAV_COORDINADOR, BOTTOM_NAV_COORDINADOR,
   isMobileWidth,
 } from "../../context/shared";
-// TODO: Descomentar cuando el módulo de servicios API esté disponible
-// import { asistenciaAPI } from "../../services/api";
+import { asistenciaAPI } from "../../services/api";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
 interface EstudianteAsistencia {
@@ -35,23 +34,31 @@ export default function AsistenciaCoordinador() {
   /* ── Nombre del usuario (debe venir de la sesión / API) ── */
   // TODO: Reemplazar con datos del usuario autenticado cuando el backend esté conectado
   const nombreUsuario = "";
-  const inicialesUsuario = "";
 
   const [navActivo,    setNavActivo]    = useState("asistencia");
-  // TODO: Reemplazar con asistenciaAPI.getAsistenciaGrados() cuando el backend esté conectado
-  const [gradosAsistencia] = useState<GradoAsistencia[]>([]);
+  const [gradosAsistencia, setGradosAsistencia] = useState<GradoAsistencia[]>([]);
   const [gradoAbierto, setGradoAbierto] = useState<string|null>(null);
   const [cursoActivo,  setCursoActivo]  = useState<string|null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
 
-  // TODO: Reemplazar con asistenciaAPI.getAsistenciaGrados() cuando el backend esté conectado
+  // Cargar datos de asistencia por grados
   useEffect(() => {
-    try {
-      // const data = await asistenciaAPI.getAsistenciaGrados();
-      // setGradosAsistencia(data);
-      console.warn("AsistenciaCoordinador: datos de asistencia no cargados — backend no conectado aún");
-    } catch (error) {
-      console.warn("Error cargando asistencia:", error);
+    async function loadData() {
+      try {
+        setCargando(true);
+        const data = await asistenciaAPI.getAsistenciaGrados();
+        setGradosAsistencia(data || []);
+        setError("");
+      } catch (err) {
+        console.error("Error cargando asistencia:", err);
+        setError("No se pudieron cargar los datos de asistencia");
+        setGradosAsistencia([]);
+      } finally {
+        setCargando(false);
+      }
     }
+    loadData();
   }, []);
 
   const ir = (ruta:string, id:string) => { setNavActivo(id); navigate(`/dashboard/${ruta}`); };
@@ -110,7 +117,15 @@ export default function AsistenciaCoordinador() {
 
           {/* Panel izquierdo: árbol grados → cursos */}
           <div style={{ width:isMobile?"100%":280, flexShrink:0, overflowY:"auto" }}>
-            {gradosAsistencia.length === 0 ? (
+            {cargando ? (
+              <div style={{ background:C.white, border:`1px solid ${C.gray200}`, borderRadius:12, padding:32, textAlign:"center", color:C.gray400, fontSize:13 }}>
+                Cargando asistencia...
+              </div>
+            ) : error ? (
+              <div style={{ background:C.redLight, border:`1px solid ${C.red}`, borderRadius:12, padding:16, textAlign:"center", color:C.red, fontSize:13 }}>
+                {error}
+              </div>
+            ) : gradosAsistencia.length === 0 ? (
               <div style={{ background:C.white, border:`1px solid ${C.gray200}`, borderRadius:12, padding:32, textAlign:"center", color:C.gray400, fontSize:13 }}>
                 No hay datos de asistencia disponibles.
               </div>

@@ -4,8 +4,7 @@ import {
   C, S, Semaforo, Avatar, Sidebar, BottomNav,
   NAV_COORDINADOR, BOTTOM_NAV_COORDINADOR,
 } from "../../context/shared";
-// TODO: Descomentar cuando el módulo de servicios API esté disponible
-// import { calificacionesAPI } from "../../services/api";
+import { calificacionesAPI } from "../../services/api";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
 interface Actividad { id: number; nombre: string; peso: number }
@@ -20,9 +19,10 @@ interface CursoData {
 }
 
 /* ─── MODAL NUEVA ACTIVIDAD ──────────────────────────────────────── */
-function ModalNuevaActividad({ onConfirm, onClose }: {
+function ModalNuevaActividad({ onConfirm, onClose, isSubmitting }: {
   onConfirm: (act: { nombre: string; peso: number; tipo: string }) => void;
   onClose: () => void;
+  isSubmitting?: boolean;
 }) {
   const [nombre, setNombre] = useState("");
   const [peso,   setPeso]   = useState("30");
@@ -35,28 +35,28 @@ function ModalNuevaActividad({ onConfirm, onClose }: {
 
         <div style={{ marginBottom: 14 }}>
           <label style={S.label}>Tipo de actividad</label>
-          <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ ...S.select, width: "100%", height: 36 }}>
+          <select value={tipo} onChange={e => setTipo(e.target.value)} disabled={isSubmitting} style={{ ...S.select, width: "100%", height: 36, opacity: isSubmitting ? 0.6 : 1 }}>
             {["Taller", "Quiz", "Parcial", "Examen", "Proyecto", "Laboratorio", "Exposición"].map(t => <option key={t}>{t}</option>)}
           </select>
         </div>
         <div style={{ marginBottom: 14 }}>
           <label style={S.label}>Nombre de la actividad</label>
-          <input type="text" placeholder="Ej: Taller 3 — Fracciones" value={nombre}
-            onChange={e => setNombre(e.target.value)} style={{ ...S.input, padding: "8px 10px" }} />
+          <input type="text" placeholder="Ej: Taller 3 — Fracciones" value={nombre} disabled={isSubmitting}
+            onChange={e => setNombre(e.target.value)} style={{ ...S.input, padding: "8px 10px", opacity: isSubmitting ? 0.6 : 1 }} />
         </div>
         <div style={{ marginBottom: 20 }}>
           <label style={S.label}>Peso en el promedio (%)</label>
-          <input type="number" min="1" max="100" value={peso}
-            onChange={e => setPeso(e.target.value)} style={{ ...S.input, padding: "8px 10px" }} />
+          <input type="number" min="1" max="100" value={peso} disabled={isSubmitting}
+            onChange={e => setPeso(e.target.value)} style={{ ...S.input, padding: "8px 10px", opacity: isSubmitting ? 0.6 : 1 }} />
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: 8, border: `1px solid ${C.gray200}`, background: C.white, color: C.gray700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+          <button onClick={onClose} disabled={isSubmitting} style={{ flex: 1, padding: "10px", borderRadius: 8, border: `1px solid ${C.gray200}`, background: C.white, color: C.gray700, fontSize: 13, cursor: isSubmitting ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: isSubmitting ? 0.6 : 1 }}>Cancelar</button>
           <button
             onClick={() => { if (nombre.trim()) onConfirm({ nombre: nombre.trim(), peso: parseInt(peso) || 30, tipo }); }}
-            disabled={!nombre.trim()}
-            style={{ flex: 1, padding: "10px", borderRadius: 8, border: "none", background: nombre.trim() ? C.blue : C.gray200, color: nombre.trim() ? C.white : C.gray400, fontSize: 13, cursor: nombre.trim() ? "pointer" : "not-allowed", fontWeight: 600, fontFamily: "inherit" }}>
-            Agregar
+            disabled={!nombre.trim() || isSubmitting}
+            style={{ flex: 1, padding: "10px", borderRadius: 8, border: "none", background: (nombre.trim() && !isSubmitting) ? C.blue : C.gray200, color: (nombre.trim() && !isSubmitting) ? C.white : C.gray400, fontSize: 13, cursor: (nombre.trim() && !isSubmitting) ? "pointer" : "not-allowed", fontWeight: 600, fontFamily: "inherit" }}>
+            {isSubmitting ? "Creando..." : "Agregar"}
           </button>
         </div>
       </div>
@@ -80,15 +80,17 @@ function BadgeCondicion({ tipo }: { tipo: string | null | undefined }) {
 }
 
 /* ─── TABLA DE CURSO ─────────────────────────────────────────────── */
-function TablaCurso({ nombreCurso, cursoData, onUpdate, isMobile }: {
+function TablaCurso({ nombreCurso, cursoData, onUpdate, onPublicar, isMobile }: {
   nombreCurso: string;
   cursoData:   CursoData;
   onUpdate:    (nombre: string, estId: number | null, actId: number | null, val: string | null) => void;
+  onPublicar:  (nombreCurso: string) => Promise<void>;
   isMobile:    boolean;
 }) {
   const { actividades, estudiantes, notas } = cursoData;
   const [publicado,  setPublicado]  = useState(false);
   const [modificado, setModificado] = useState(false);
+  const [publicando, setPublicando] = useState(false);
 
   const calcProm = (estId: number) => {
     if (actividades.length === 0) return null;
@@ -126,20 +128,33 @@ function TablaCurso({ nombreCurso, cursoData, onUpdate, isMobile }: {
       <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.gray100}` }}>
         <div style={{ display: "flex", gap: 8 }}>
           <button
-            disabled={!puedePublicar}
-            onClick={() => { setPublicado(true); setModificado(false); }}
+            disabled={!puedePublicar || publicando}
+            onClick={async () => {
+              try {
+                setPublicando(true);
+                await onPublicar(nombreCurso);
+                setPublicado(true);
+                setModificado(false);
+              } catch (err) {
+                console.error("Error publicando:", err);
+                alert("Error al publicar notas");
+              } finally {
+                setPublicando(false);
+              }
+            }}
             style={{
               width: "100%", padding: "8px", borderRadius: 8, border: "none",
               fontFamily: "inherit", fontWeight: 600, fontSize: 12,
-              cursor: puedePublicar ? "pointer" : "not-allowed",
+              cursor: (puedePublicar && !publicando) ? "pointer" : "not-allowed",
               background: publicado && !modificado
                 ? C.greenLight
                 : puedePublicar ? C.blue : C.gray200,
               color: publicado && !modificado
                 ? C.green
                 : puedePublicar ? C.white : C.gray400,
+              opacity: publicando ? 0.6 : 1,
             }}>
-            {publicado && !modificado ? "✓ Publicado" : "Publicar"}
+            {publicando ? "Publicando..." : publicado && !modificado ? "✓ Publicado" : "Publicar"}
           </button>
         </div>
 
@@ -232,14 +247,17 @@ export default function CalificacionesCoordinador() {
   const nombreUsuario = "";
 
   const [navActivo,    setNavActivo]    = useState("calificaciones");
-  // TODO: Reemplazar con calificacionesAPI.getCursosCoordinador() cuando el backend esté conectado
   const [cursos,       setCursos]       = useState<Record<string, CursoData>>({});
   const [filtroMateria, setFiltroMateria] = useState("Todas");
   const [filtroDocente, setFiltroDocente] = useState("Todos");
-  // TODO: Reemplazar con datos del backend cuando esté conectado
   const [materias, setMaterias] = useState<string[]>(["Todas"]);
   const [docentes, setDocentes] = useState<string[]>(["Todos"]);
   const [isMobile,     setIsMobile]     = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [cursoSeleccionado, setCursoSeleccionado] = useState<string|null>(null);
+  const [enviandoActividad, setEnviandoActividad] = useState(false);
 
   useEffect(() => {
     const handle = () => setIsMobile(window.innerWidth < 1280);
@@ -248,17 +266,35 @@ export default function CalificacionesCoordinador() {
     return () => window.removeEventListener("resize", handle);
   }, []);
 
-  // TODO: Reemplazar con calificacionesAPI.getCursosCoordinador() cuando el backend esté conectado
+  // Cargar cursos con calificaciones
   useEffect(() => {
-    try {
-      // const data = await calificacionesAPI.getCursosCoordinador();
-      // setCursos(data.cursos);
-      // setMaterias(["Todas", ...data.materias]);
-      // setDocentes(["Todos", ...data.docentes]);
-      console.warn("CalificacionesCoordinador: datos de cursos no cargados — backend no conectado aún");
-    } catch (error) {
-      console.warn("Error cargando cursos:", error);
+    async function loadData() {
+      try {
+        setCargando(true);
+        const data = await calificacionesAPI.getCursosConNotas();
+        setCursos(data || {});
+        
+        // Extraer materias únicas y docentes únicos
+        const materiasSet = new Set<string>(["Todas"]);
+        const docentesSet = new Set<string>(["Todos"]);
+        
+        Object.values(data).forEach((curso: any) => {
+          if (curso.materia) materiasSet.add(curso.materia);
+          if (curso.docente) docentesSet.add(curso.docente);
+        });
+        
+        setMaterias(Array.from(materiasSet));
+        setDocentes(Array.from(docentesSet));
+        setError("");
+      } catch (err) {
+        console.error("Error cargando cursos:", err);
+        setError("No se pudieron cargar los datos de calificaciones");
+        setCursos({});
+      } finally {
+        setCargando(false);
+      }
     }
+    loadData();
   }, []);
 
   const ir = (ruta: string, id?: string) => { if (id) setNavActivo(id); navigate(`/dashboard/${ruta}`); };
@@ -272,7 +308,8 @@ export default function CalificacionesCoordinador() {
     estId: number | null, actId: number | null, val: string | null,
   ) => {
     if (estId === null || actId === null || val === null) return;
-    // TODO: Reemplazar con calificacionesAPI.guardarNota() para persistir en backend
+    
+    // Actualizar localmente
     setCursos(prev => ({
       ...prev,
       [nombreCurso]: {
@@ -283,6 +320,49 @@ export default function CalificacionesCoordinador() {
         },
       },
     }));
+    
+    // Guardar en backend de forma asincrónica sin bloquear
+    calificacionesAPI.guardarNota(nombreCurso, String(estId), String(actId), val)
+      .catch(err => console.error("Error guardando nota:", err));
+  };
+
+  const handleCrearActividad = async (actividad: { nombre: string; peso: number; tipo: string }) => {
+    if (!cursoSeleccionado) return;
+    
+    try {
+      setEnviandoActividad(true);
+      // cursoSeleccionado es el nombre del curso, convertir a ID si es necesario
+      const cursoId = cursosFiltrados.length > 0 ? cursosFiltrados[0][0] : cursoSeleccionado;
+      await calificacionesAPI.crearActividad(parseInt(cursoId) || 0, actividad);
+      
+      // Recargar datos
+      const data = await calificacionesAPI.getCursosConNotas();
+      setCursos(data || {});
+      setModalAbierto(false);
+    } catch (err) {
+      console.error("Error creando actividad:", err);
+      alert("Error al crear la actividad. Intenta de nuevo.");
+    } finally {
+      setEnviandoActividad(false);
+    }
+  };
+
+  const handlePublicar = async (nombreCurso: string) => {
+    const curso = cursos[nombreCurso];
+    if (!curso || !curso.actividades || curso.actividades.length === 0) {
+      alert("No hay actividades para publicar");
+      return;
+    }
+    
+    try {
+      // Publicar la primera actividad (o todas)
+      for (const actividad of curso.actividades) {
+        await calificacionesAPI.publicarNotas(actividad.id);
+      }
+    } catch (err) {
+      console.error("Error publicando actividades:", err);
+      throw err;
+    }
   };
 
   /* Filtrado */
@@ -329,6 +409,18 @@ export default function CalificacionesCoordinador() {
 
         {/* ── Contenido ── */}
         <main style={{ ...S.content, padding: isMobile ? "12px" : "20px 24px" }}>
+          
+          {/* Mostrar error o carga */}
+          {cargando ? (
+            <div style={{ background: C.white, border: `1px solid ${C.gray200}`, borderRadius: 12, padding: 32, textAlign: "center", color: C.gray400, fontSize: 13 }}>
+              Cargando calificaciones...
+            </div>
+          ) : error ? (
+            <div style={{ background: C.redLight, border: `1px solid ${C.red}`, borderRadius: 12, padding: 16, textAlign: "center", color: C.red, fontSize: 13 }}>
+              {error}
+            </div>
+          ) : (
+            <>
 
           {/* Mini estadísticas */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: isMobile ? 8 : 12, marginBottom: isMobile ? 12 : 16 }}>
@@ -344,8 +436,8 @@ export default function CalificacionesCoordinador() {
             ))}
           </div>
 
-          {/* Filtros */}
-          <div style={{ display: "flex", gap: 8, marginBottom: isMobile ? 10 : 14, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+          {/* Filtros y acciones */}
+          <div style={{ display: "flex", gap: 8, marginBottom: isMobile ? 10 : 14, flexWrap: isMobile ? "wrap" : "nowrap", alignItems: "flex-start" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
               <label style={{ fontSize: 11, fontWeight: 600, color: C.gray500, flexShrink: 0 }}>Materia</label>
               <select
@@ -364,6 +456,30 @@ export default function CalificacionesCoordinador() {
                 {docentes.map(d => <option key={d}>{d}</option>)}
               </select>
             </div>
+            <button
+              onClick={() => {
+                if (cursosFiltrados.length === 0) {
+                  alert("No hay cursos disponibles para agregar actividades");
+                  return;
+                }
+                setCursoSeleccionado(cursosFiltrados[0][0]);
+                setModalAbierto(true);
+              }}
+              style={{
+                height: 30,
+                padding: "6px 12px",
+                background: C.blue,
+                color: C.white,
+                border: "none",
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                flexShrink: 0,
+              }}>
+              + Actividad
+            </button>
           </div>
 
           {/* Acordeón de cursos */}
@@ -398,13 +514,25 @@ export default function CalificacionesCoordinador() {
                     nombreCurso={nombre}
                     cursoData={data}
                     onUpdate={handleUpdate}
+                    onPublicar={handlePublicar}
                     isMobile={isMobile}
                   />
                 )}
               </div>
             ))
           )}
+            </>
+          )}
         </main>
+
+        {/* Modal nueva actividad */}
+        {modalAbierto && (
+          <ModalNuevaActividad
+            onConfirm={handleCrearActividad}
+            onClose={() => setModalAbierto(false)}
+            isSubmitting={enviandoActividad}
+          />
+        )}
 
         {isMobile && (
           <BottomNav items={BOTTOM_NAV_COORDINADOR} navActivo={navActivo} onNav={ir} />

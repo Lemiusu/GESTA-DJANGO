@@ -381,7 +381,6 @@ export default function EstudiantesCoordinador() {
   /* ── Nombre del usuario (debe venir de la sesión / API) ── */
   // TODO: Reemplazar con datos del usuario autenticado cuando el backend esté conectado
   const nombreUsuario = "";
-  const inicialesUsuario = "";
 
   /* ── Estados de navegación y filtros ── */
   const [navActivo,    setNavActivo]    = useState("estudiantes");
@@ -753,7 +752,7 @@ export default function EstudiantesCoordinador() {
                     <div style={{ background:C.white, border:`1px solid ${C.gray200}`, borderRadius:12, padding:"32px 16px", textAlign:"center", fontSize:12, color:C.gray400 }}>
                       No se encontraron estudiantes con estos filtros.
                     </div>
-                  ) : estudiantesFiltrados.map((e, i) => {
+                  ) : estudiantesFiltrados.map((e) => {
                     const alerta = getAlertasActivas().some(a => a.estudianteId===e.id);
                     return (
                       <div
