@@ -11,9 +11,20 @@ import {
 /* ─── TIPOS ─────────────────────────────────────────────────────── */
 export type NivelRiesgo = "verde" | "amarillo" | "rojo";
 
-export interface Observacion {
+export interface Curso {
   id: number;
-  estudianteId: string;  // ← string en lugar de number
+  nombre: string;
+  grado: string;
+  estudiantes: Array<{
+    id: number;
+    nombre: string;
+    condicion: string | null;
+  }>;
+}
+
+export interface Observacion {
+  id: string;
+  estudianteId: string;
   tipo: string;
   desc: string;
   fecha: string;
@@ -22,7 +33,7 @@ export interface Observacion {
 }
 
 export interface Mensaje {
-  id: number;
+  id: string | number;
   destinatarios?: string[];
   de: string;
   rolDe: string;
@@ -91,7 +102,7 @@ interface GESTAContextType {
   mensajes: Mensaje[];
   loadingMensajes: boolean;
   agregarMensaje: (msg: Omit<Mensaje, "id">) => Promise<void>;
-  marcarMensajeLeido: (id: number) => Promise<void>;
+  marcarMensajeLeido: (id: string | number) => Promise<void>;
   getMensajesPara: (rol: string) => Mensaje[];
   getMensajesNoLeidos: (rol: string) => number;
 
@@ -169,8 +180,16 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
   const agregarObservacion = useCallback(async (obs: Omit<Observacion, "id">) => {
     try {
       setLoadingObservaciones(true);
-      const nueva = await observacionesAPI.crearObservacion(obs);
-      setObservaciones(prev => [...prev, nueva]);
+      await observacionesAPI.crearObservacion({
+        estudianteId: obs.estudianteId,
+        tipo: obs.tipo,
+        desc: obs.desc,
+        autor: obs.autor,
+        rol: obs.rol,
+      });
+      // No intentamos agregar "nueva" al estado porque la API no devuelve
+      // el objeto completo con el shape de Observacion
+      setObservaciones(prev => [...prev, { id: Date.now().toString(), ...obs }]);
     } catch (error) {
       console.error("Error creando observación:", error);
       throw error;
@@ -186,19 +205,26 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
   /* Mensajes */
   const agregarMensaje = useCallback(async (msg: Omit<Mensaje, "id">) => {
     try {
-      const nuevo = await mensajesAPI.enviarMensaje({
-        destinatarios: msg.destinatarios ?? [msg.para],
+      // Enviar mensaje al backend usando rol
+      await mensajesAPI.enviarMensajePorRol({
+        destinatarios: msg.para, // "docente", "coordinador", "todos", etc.
         asunto: msg.asunto,
         contenido: msg.contenido,
       });
-      setMensajes(prev => [nuevo, ...prev]);
+      
+      // Agregar localmente con ID generado por el backend
+      const mensajeConId: Mensaje = {
+        id: Math.random(), // Temporal hasta que backend retorne el ID real
+        ...msg,
+      };
+      setMensajes(prev => [mensajeConId, ...prev]);
     } catch (error) {
       console.error("Error enviando mensaje:", error);
       throw error;
     }
   }, []);
 
-  const marcarMensajeLeido = useCallback(async (id: number) => {
+  const marcarMensajeLeido = useCallback(async (id: string | number) => {
     try {
       await mensajesAPI.marcarLeido(id);
       setMensajes(prev => prev.map(m => m.id === id ? { ...m, leido: true } : m));

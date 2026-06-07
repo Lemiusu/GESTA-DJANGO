@@ -1,17 +1,16 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { useGESTA } from "../../context/GESTAContext";
 import {
   C, S, SM, Semaforo, Avatar, Sidebar, BottomNav,
-  IcoHome, IcoUsers, IcoBell, IcoEye, IcoMsg,
   NAV_COORDINADOR, BOTTOM_NAV_COORDINADOR,
-  isMobileWidth, TIPO_OBS_META, BadgeCondicion, TipoPill,
 } from "../../context/shared";
 import { estudiantesAPI } from "../../services/api";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
 interface Estudiante {
-  id: number;
+  id: string;
   nombre: string;
   grado: string;
   promedio: number;
@@ -31,6 +30,12 @@ type OrdenCol = "nombre"|"grado"|"promedio"|"asistencia"|"obs"|"riesgo";
 type OrdenDir = "asc"|"desc";
 
 const RIESGO_ORDEN: Record<string,number> = { rojo:0, amarillo:1, verde:2 };
+
+const TIPO_OBS_META: Record<string, { bg: string; color: string; label: string }> = {
+  "disciplina": { bg: "#fee2e2", color: "#dc2626", label: "Disciplina" },
+  "academica": { bg: "#fef3c7", color: "#d97706", label: "Académica" },
+  "comportamiento": { bg: "#e0e7ff", color: "#4f46e5", label: "Comportamiento" },
+};
 
 /* ─── PERFIL DEL ESTUDIANTE ───────────────────────────────────── */
 function PerfilEstudiante({
@@ -346,7 +351,7 @@ function PerfilEstudiante({
 /* ─── COMPONENTE PRINCIPAL ────────────────────────────────────── */
 export default function EstudiantesCoordinador() {
   const navigate = useNavigate();
-  const { getAlertasActivas, getMensajesNoLeidos, getCondicion } = useGESTA();
+  const { getAlertasActivas, getMensajesNoLeidos } = useGESTA();
 
   /* ── Responsive ── */
   const [isMobile, setIsMobile] = useState(false);
@@ -363,7 +368,7 @@ export default function EstudiantesCoordinador() {
   const [estudiantes, setEstudiantes] = useState<Estudiante[]>([]);
   const [grados, setGrados] = useState<string[]>([]);
   // TODO: Reemplazar con estudiantesAPI.getPerfilEstudiante(id) cuando el backend esté conectado
-  const [calificaciones, setCalificaciones] = useState<Record<number, CalificacionMateria[]>>({});
+  const [calificaciones] = useState<Record<number, CalificacionMateria[]>>({});
 
   useEffect(() => {
     estudiantesAPI.getEstudiantes()
@@ -375,9 +380,8 @@ export default function EstudiantesCoordinador() {
   }, []);
 
   /* ── Nombre del usuario (debe venir de la sesión / API) ── */
-  // TODO: Reemplazar con datos del usuario autenticado cuando el backend esté conectado
-  const nombreUsuario = "";
-  const inicialesUsuario = "";
+  const { user } = useAuth();
+  const nombreUsuario = user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.username || "Usuario";
 
   /* ── Estados de navegación y filtros ── */
   const [navActivo,    setNavActivo]    = useState("estudiantes");
@@ -522,7 +526,6 @@ export default function EstudiantesCoordinador() {
           onNav={ir}
           usuario={nombreUsuario}
           subUsuario="Coordinador"
-          initials={inicialesUsuario}
         />
       )}
 
@@ -604,7 +607,7 @@ export default function EstudiantesCoordinador() {
                   {/* Filtro grado */}
                   <select value={filtroGrado} onChange={e => setFiltroGrado(e.target.value)} style={S.select}>
                     <option value="Todos">Todos los grados</option>
-                    {grados.map(g => <option key={g} value={g}>Grado {g}</option>)}
+                    {grados.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
 
                   {/* Filtro riesgo */}
@@ -842,7 +845,7 @@ export default function EstudiantesCoordinador() {
                     onChange={e => setNuevoGrado(e.target.value)}
                     style={{ ...S.select, width:"100%", fontSize:13 }}
                   >
-                    {grados.map(g => <option key={g} value={g}>Grado {g}</option>)}
+                    {grados.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
 

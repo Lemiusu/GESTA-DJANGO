@@ -54,4 +54,6 @@ urlpatterns = [
     path('alertas/<uuid:pk>/resolver/', views.AlertasResolverView.as_view(), name='alertas-resolver'),
 
     path('acudientes/<uuid:pk>/estudiantes/', views.AcudienteEstudiantesView.as_view(), name='acudiente-estudiantes'),
+    
+    path('usuarios/', views.UsuariosView.as_view(), name='usuarios'),
 ]

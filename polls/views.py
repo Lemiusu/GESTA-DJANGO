@@ -283,7 +283,8 @@ class AsistenciaGradosView(APIView):
     def get(self, request):
         hoy = date.today()
         grados = Curso.objects.select_related('grado').prefetch_related(
-            'registros_asistencia__detalles__estudiante__usuario'
+            'registros_asistencia__detalles__estudiante__usuario',
+            'estudiantes__usuario'
         ).all()
 
         grados_map = {}
@@ -293,19 +294,43 @@ class AsistenciaGradosView(APIView):
                 grados_map[grado_nombre] = {'grado': grado_nombre, 'cursos': []}
 
             registro = curso.registros_asistencia.filter(fecha=hoy).first()
-            presentes = ausentes = total = 0
+            presentes = 0
+            ausentes = 0
+            total = 0
+            estudiantes_list = []
+            
             if registro:
-                total = registro.detalles.count()
-                presentes = registro.detalles.filter(estado__in=['presente', 'justificado']).count()
-                ausentes = registro.detalles.filter(estado='ausente').count()
+                detalles = registro.detalles.all()
+                total = detalles.count()
+                presentes = detalles.filter(estado__in=['presente', 'justificado']).count()
+                ausentes = detalles.filter(estado='ausente').count()
+                
+                # Construir lista de estudiantes con su estado
+                for detalle in detalles:
+                    est = detalle.estudiante
+                    estudiantes_list.append({
+                        'id': est.id,
+                        'nombre': f'{est.usuario.first_name} {est.usuario.last_name}' if est.usuario else 'Sin nombre',
+                        'estado': 'P' if detalle.estado in ['presente', 'justificado'] else 'A'
+                    })
+            else:
+                # Si no hay registro hoy, listar todos los estudiantes del curso como ausentes
+                for est in curso.estudiantes.all():
+                    total += 1
+                    estudiantes_list.append({
+                        'id': est.id,
+                        'nombre': f'{est.usuario.first_name} {est.usuario.last_name}' if est.usuario else 'Sin nombre',
+                        'estado': 'A'
+                    })
 
             grados_map[grado_nombre]['cursos'].append({
-                'curso_id': curso.id,
+                'id': curso.id,
                 'curso': curso.nombre,
                 'presentes': presentes,
                 'ausentes': ausentes,
                 'total': total,
                 'porcentaje_asistencia': round((presentes / total) * 100, 1) if total > 0 else 0,
+                'estudiantes': estudiantes_list,
             })
 
         return Response(list(grados_map.values()))
@@ -350,42 +375,59 @@ class CalificacionesCursosView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        docente = getattr(request.user, 'docente', None)
-        if not docente:
-            return Response({'detail': 'Usuario no es docente.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            docente = getattr(request.user, 'docente', None)
+            coordinador = getattr(request.user, 'coordinador', None)
+            
+            if not docente and not coordinador:
+                return Response({'detail': 'Usuario no es docente ni coordinador.'}, status=status.HTTP_403_FORBIDDEN)
 
-        cursos = Curso.objects.filter(docente_titular=docente).prefetch_related('estudiantes__usuario', 'asignaturas__actividades__calificaciones__estudiante')
-        resultado = []
-        for curso in cursos:
-            estudiantes = list(curso.estudiantes.all())
-            notas = {str(est.id): {} for est in estudiantes}
-            actividades = []
-            for asignatura in curso.asignaturas.all():
-                for actividad in asignatura.actividades.all():
-                    actividades.append({
-                        'id': str(actividad.id),   # ← también convertir a string
-                        'nombre': actividad.nombre,
-                        'peso': float(actividad.porcentaje),
-                        'publicada': actividad.estado == 'publicada',
-                    })
-                    for estudiante in estudiantes:
-                        calificacion = actividad.calificaciones.filter(estudiante=estudiante).first()
-                        notas[str(estudiante.id)][str(actividad.id)] = (
-                            '' if not calificacion or calificacion.valor is None
-                            else str(calificacion.valor)
-                        )
+            # Si es docente, filtrar solo sus cursos; si es coordinador, traer todos
+            if docente:
+                cursos = Curso.objects.filter(docente_titular=docente).prefetch_related('estudiantes__usuario', 'asignaturas__actividades__calificaciones__estudiante')
+            else:
+                cursos = Curso.objects.all().prefetch_related('estudiantes__usuario', 'asignaturas__actividades__calificaciones__estudiante')
+            
+            resultado = []
+            for curso in cursos:
+                estudiantes = list(curso.estudiantes.all())
+                notas = {str(est.id): {} for est in estudiantes}
+                actividades = []
+                for asignatura in curso.asignaturas.all():
+                    for actividad in asignatura.actividades.all():
+                        actividades.append({
+                            'id': str(actividad.id),
+                            'nombre': actividad.nombre,
+                            'peso': float(actividad.porcentaje),
+                            'publicada': actividad.estado == 'publicada',
+                        })
+                        for estudiante in estudiantes:
+                            calificacion = actividad.calificaciones.filter(estudiante=estudiante).first()
+                            valor = '' if not calificacion or calificacion.valor is None else str(calificacion.valor)
+                            notas[str(estudiante.id)][str(actividad.id)] = valor
 
-            resultado.append({
-                'curso_id': curso.id,
-                'curso': curso.nombre,
-                'actividades': actividades,
-                'estudiantes': [
-                    {'id': str(e.id), 'nombre': f'{e.usuario.first_name} {e.usuario.last_name}', 'condicion': e.descripcion_condicion if e.tiene_condicion_especial else None}
-                    for e in estudiantes
-                ],
-                'notas': notas,
-            })
-        return Response({'cursos': resultado})
+                docente_nombre = 'Sin docente'
+                if curso.docente_titular and hasattr(curso.docente_titular, 'usuario'):
+                    docente_nombre = f'{curso.docente_titular.usuario.first_name} {curso.docente_titular.usuario.last_name}'
+
+                resultado.append({
+                    'curso_id': str(curso.id),
+                    'curso': curso.nombre,
+                    'docente': docente_nombre,
+                    'materia': 'Todas',
+                    'actividades': actividades,
+                    'estudiantes': [
+                        {'id': str(e.id), 'nombre': f'{e.usuario.first_name} {e.usuario.last_name}', 'condicion': e.descripcion_condicion if e.tiene_condicion_especial else None}
+                        for e in estudiantes
+                    ],
+                    'notas': notas,
+                })
+            return Response({'cursos': resultado})
+        except Exception as e:
+            import traceback
+            print(f"Error en CalificacionesCursosView: {str(e)}")
+            traceback.print_exc()
+            return Response({'detail': f'Error cargando calificaciones: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class GuardarNotaView(APIView):
@@ -447,7 +489,13 @@ class CrearActividadView(APIView):
         if not curso_id or not nombre or peso is None:
             return Response({'detail': 'curso_id, nombre y peso son obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        curso = get_object_or_404(Curso, pk=curso_id)
+        try:
+            curso = Curso.objects.get(pk=curso_id)
+        except Curso.DoesNotExist:
+            return Response({'detail': f'Curso con ID {curso_id} no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'detail': f'Error buscando curso: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
         asignatura = curso.asignaturas.first()
         if not asignatura:
             asignatura = Asignatura.objects.create(curso=curso, docente=curso.docente_titular, nombre=f'Asignatura {curso.nombre}')
@@ -464,7 +512,7 @@ class CrearActividadView(APIView):
             estado='borrador',
             publicado_por=request.user,
         )
-        return Response({'id': actividad.id, 'nombre': actividad.nombre, 'peso': float(actividad.porcentaje), 'estado': actividad.estado})
+        return Response({'id': str(actividad.id), 'nombre': actividad.nombre, 'peso': float(actividad.porcentaje), 'estado': actividad.estado})
 
 
 class PublicarActividadView(APIView):
@@ -592,23 +640,41 @@ class MensajesView(APIView):
     def get(self, request):
         para = request.query_params.get('para')
         queryset = Mensaje.objects.select_related('remitente').prefetch_related('destinatarios__destinatario').order_by('-enviado_en')
+        
+        # Filtrar solo mensajes del usuario actual como destinatario
+        queryset = queryset.filter(destinatarios__destinatario=request.user)
+        
+        # Opcionalmente filtrar por rol del usuario
         if para:
             queryset = queryset.filter(destinatarios__destinatario__rol=para)
 
         mensajes = []
+        # Usar set para evitar duplicados
+        mensaje_ids = set()
+        
         for mensaje in queryset.distinct():
+            if mensaje.id in mensaje_ids:
+                continue  # Skip duplicates
+            mensaje_ids.add(mensaje.id)
+            
             destinatario_rel = mensaje.destinatarios.filter(destinatario=request.user).first()
+            # Detectar tipo de mensaje basado en el asunto
+            msg_type = 'mensaje'
+            if 'Alerta' in mensaje.asunto or '⚠' in mensaje.asunto:
+                msg_type = 'alerta'
+            elif 'Noticia' in mensaje.asunto or 'notificación' in mensaje.asunto.lower():
+                msg_type = 'notificacion'
+            
             mensajes.append({
                 'id': mensaje.id,
                 'asunto': mensaje.asunto,
                 'contenido': mensaje.contenido,
-                'remitente': f'{mensaje.remitente.first_name} {mensaje.remitente.last_name}',
-                'hora': mensaje.enviado_en.isoformat(),
-                'destinatarios': [
-                    f'{d.destinatario.first_name} {d.destinatario.last_name}'
-                    for d in mensaje.destinatarios.all()
-                ],
+                'de': f'{mensaje.remitente.first_name} {mensaje.remitente.last_name}',
+                'rolDe': mensaje.remitente.rol or 'usuario',
+                'para': 'todos',  # Placeholder - ideally should be determined from destinatarios
+                'fecha': mensaje.enviado_en.isoformat(),
                 'leido': destinatario_rel.leido if destinatario_rel else False,
+                'tipo': msg_type,
             })
         return Response(mensajes)
 
@@ -800,6 +866,24 @@ class ObservadorCoordinadorView(APIView):
     def get(self, request):
         serializer = ObservadorCoordinadorSerializer({}, context={'request': request})
         return Response(serializer.data)
+
+
+class UsuariosView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        rol = request.query_params.get('rol')
+        if not rol:
+            return Response({'detail': 'Parámetro rol requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        usuarios = Usuario.objects.filter(rol=rol).values('id', 'first_name', 'last_name')
+        return Response([
+            {
+                'id': str(u['id']),
+                'nombre': f'{u["first_name"]} {u["last_name"]}'
+            }
+            for u in usuarios
+        ])
 
 
 def index(request):

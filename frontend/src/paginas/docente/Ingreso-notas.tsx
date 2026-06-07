@@ -10,14 +10,14 @@ import { calificacionesAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
-interface Actividad { id: number; nombre: string; peso: number; publicada?: boolean }
-interface Estudiante { id: number; nombre: string; condicion?: string | null }
+interface Actividad { id: string; nombre: string; peso: number; publicada?: boolean }
+interface Estudiante { id: string; nombre: string; condicion?: string | null }
 interface CursoData {
-  id: number;           // ← nuevo
+  id: string;           // ← nuevo
   abierto: boolean;
   actividades: Actividad[];
   estudiantes: Estudiante[];
-  notas: Record<number, Record<number, string>>;
+  notas: Record<number, Record<string, string>>;
 }
 
 /* ─── MODAL NUEVA ACTIVIDAD ──────────────────────────────────────── */
@@ -97,33 +97,31 @@ function parsearNota(val: string): number | null {
 /* ─── TABLA DE CURSO ─────────────────────────────────────────────── */
 function TablaCurso({ nombreCurso, cursoId, cursoData, onUpdate, isMobile }: {
   nombreCurso: string;
-  cursoId: number;      // ← nuevo
+  cursoId: string;      // ← nuevo
   cursoData: CursoData;
-  onUpdate: (nombre: string, estId: number | null, actId: number | null, val: string | null, nuevaAct?: Actividad, publicarActId?: number, despublicarActId?: number) => void;
+  onUpdate: (nombre: string, estId: string | null, actId: string | null, val: string | null, nuevaAct?: Actividad, publicarActId?: string, despublicarActId?: string) => void;
   isMobile: boolean;
 }) {
   const { agregarMensaje } = useGESTA();
-  const { actividades, estudiantes, notas } = cursoData;
+  const { actividades, estudiantes } = cursoData;
+  const notas = cursoData.notas as { [key: string]: { [key: string]: string } }; 
   const [mostrarModal, setMostrarModal] = useState(false);
-  const [mensajePublicacion, setMensajePublicacion] = useState<{actId: number; nombre: string} | null>(null);
+  const [mensajePublicacion, setMensajePublicacion] = useState<{actId: string; nombre: string} | null>(null);
 
-  // TODO: Reemplazar con el nombre del docente obtenido del contexto de autenticación
-  const { nombreCompleto } = useAuth();
-  const nombreDocente = nombreCompleto() || "Docente";
+  const calcProm = (estId: string) => {
+    if (actividades.length === 0) return null;
+    let suma = 0, pesoCont = 0;
+    const notasEst: Record<string, string> = (notas as Record<string, Record<string, string>>)[estId] || {};
+    actividades.forEach(a => {
+      const raw = notasEst[a.id] || "";
+      const n = parsearNota(raw);
+      if (n !== null) { suma += n * a.peso; pesoCont += a.peso; }
+    });
+    if (pesoCont === 0) return null;
+    return (suma / pesoCont).toFixed(1).replace(".", ",");
+  };
 
-const calcProm = (estId: number) => {
-  if (actividades.length === 0) return null;
-  let suma = 0, pesoCont = 0;
-  actividades.forEach(a => {
-    const raw = notas[estId]?.[a.id] || "";
-    const n   = parsearNota(raw);
-    if (n !== null) { suma += n * a.peso; pesoCont += a.peso; }
-  });
-  if (pesoCont === 0) return null;
-  return (suma / pesoCont).toFixed(1).replace(".", ",");
-};
-
-  const setNota = (estId: number, actId: number, val: string) => {
+  const setNota = (estId: string, actId: string, val: string) => {
     if (val !== "" && (parseFloat(val) < 0 || parseFloat(val) > 5)) return;
     onUpdate(nombreCurso, estId, actId, val);
     // ✅ Persistir en backend
@@ -145,13 +143,16 @@ const calcProm = (estId: number) => {
       })
       .catch(err => {
         console.warn("Error creando actividad:", err);
-        // Fallback: ID temporal local si el backend falla
-        const newId = actividades.length > 0 ? Math.max(...actividades.map(a => a.id)) + 1 : 1;
-        onUpdate(nombreCurso, null, null, null, { ...act, id: newId, publicada: false });
+        // Fallback: ID temporal basado en timestamp
+        onUpdate(nombreCurso, null, null, null, { 
+          ...act, 
+          id: Date.now().toString(), 
+          publicada: false 
+        });
       });
   };
   
-  const publicarActividad = (actId: number) => {
+  const publicarActividad = (actId: string) => {
     const actividad = actividades.find(a => a.id === actId);
     if (!actividad) return;
   
@@ -169,13 +170,13 @@ const calcProm = (estId: number) => {
       .catch(err => console.warn("Error publicando actividad:", err));
   };
   
-  const despublicarActividad = (actId: number) => {
+  const despublicarActividad = (actId: string) => {
     calificacionesAPI.despublicarNotas(actId)
       .then(() => onUpdate(nombreCurso, null, null, null, undefined, undefined, actId))
       .catch(err => console.warn("Error despublicando actividad:", err));
   };
 
-  const getSinCalificarPorActividad = (actId: number) => {
+  const getSinCalificarPorActividad = (actId: string) => {
     return estudiantes.filter(e => !notas[e.id]?.[actId] || notas[e.id][actId] === "").length;
   };
 
@@ -295,7 +296,7 @@ const calcProm = (estId: number) => {
         <div style={{ padding: "24px", textAlign: "center", color: C.gray400, fontSize: 13 }}>Sin actividades. Agrega una para empezar.</div>
       ) : (
         estudiantes.map((est, estIndex) => {
-          const prom  = calcProm(est.id);
+          const prom = calcProm(String(est.id));
           const nivel = prom !== null ? (parseFloat(prom) >= 3 ? "verde" : parseFloat(prom) >= 2 ? "amarillo" : "rojo") : null;
           
           return (
@@ -326,7 +327,7 @@ const calcProm = (estId: number) => {
                         type="text"
                         inputMode="numeric"
                         placeholder="—"
-                        value={notas[est.id]?.[act.id] || ""}
+                        value={notas[String(est.id)]?.[String(act.id)] || ""}
                         
                         // Coordenadas de la celda (Fila = estIndex, Columna = actIndex)
                         data-curso={nombreCurso}
@@ -459,9 +460,9 @@ export default function IngresoNotas() {
     }
   }, []);
 
-  // TODO: Reemplazar con el nombre del docente obtenido del contexto de autenticación
-  const { nombreCompleto } = useAuth();
-  const nombreDocente = nombreCompleto() || "Docente";
+  // Datos del usuario autenticado
+  const { user } = useAuth();
+  const nombreDocente = user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.username || "Docente";
 
   const ir = (ruta: string, id?: string) => { if (id) setNavActivo(id); navigate(`/dashboard/${ruta}`); };
 
@@ -472,32 +473,31 @@ export default function IngresoNotas() {
     });
   };
 
-  const handleUpdate = (nombreCurso: string, estId: number | null, actId: number | null, val: string | null, nuevaAct?: Actividad, publicarActId?: number, despublicarActId?: number) => {
+  const handleUpdate = (nombre: string, estId: string | null, actId: string | null, val: string | null, nuevaAct?: Actividad, publicarActId?: string, despublicarActId?: string) => {
     setCursos(prev => {
-      const curso = { ...prev[nombreCurso] };
+      const curso = { ...prev[nombre] };
+      const notas = curso.notas as { [key: string]: { [key: string]: string } };
+  
       if (nuevaAct) {
         curso.actividades = [...curso.actividades, nuevaAct];
-        curso.notas = { ...curso.notas };
         curso.estudiantes.forEach(e => {
-          curso.notas[e.id] = { ...curso.notas[e.id], [nuevaAct.id]: "" };
+          notas[e.id] = { ...notas[e.id], [nuevaAct.id]: "" };
         });
-        // TODO: Reemplazar con calificacionesAPI.crearActividad() para crear en backend
+        curso.notas = notas;
       } else if (publicarActId !== undefined) {
         curso.actividades = curso.actividades.map(a =>
           a.id === publicarActId ? { ...a, publicada: true } : a
         );
-        // TODO: Reemplazar con calificacionesAPI.publicarNotas() para publicar en backend
       } else if (despublicarActId !== undefined) {
         curso.actividades = curso.actividades.map(a =>
           a.id === despublicarActId ? { ...a, publicada: false } : a
         );
-        // TODO: Reemplazar con calificacionesAPI.despublicarNotas() cuando el backend esté conectado
       } else if (estId !== null && actId !== null && val !== null) {
-        curso.notas = { ...curso.notas, [estId]: { ...curso.notas[estId], [actId]: val } };
-        // TODO: Reemplazar con calificacionesAPI.guardarNota() para persistir en backend
+        notas[estId] = { ...notas[estId], [actId]: val };
+        curso.notas = notas;
       }
-      const updated = { ...prev, [nombreCurso]: curso };
-      return updated;
+  
+      return { ...prev, [nombre]: curso };
     });
   };
 

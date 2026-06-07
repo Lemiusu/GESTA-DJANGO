@@ -148,7 +148,7 @@ export const docenteAPI = {
 };
 
 export const asistenciaAPI = {
-  getRegistroHoy: async (cursoId: number) => {
+  getRegistroHoy: async (cursoId: string | number) => {
     return request<Record<string, { abierto: boolean; estudiantes: any[] }>>(
       `/asistencia/${buildQuery({ curso: cursoId, fecha: "hoy" })}`
     );
@@ -171,16 +171,16 @@ export const asistenciaAPI = {
       }),
     });
   },
-  getHistorial: async (cursoId: number, fechaInicio?: string, fechaFin?: string) => {
-    return request<any[]>(`/asistencia/historial/${buildQuery({ curso: cursoId, fechaInicio, fechaFin })}`);
+  getHistorial: async (cursoId: string | number) => {
+    return request<any[]>(`/asistencia/historial/${buildQuery({ curso: cursoId })}`);
   },
-  editarRegistro: async (registroId: number, estado: string, motivo?: string) => {
+  editarRegistro: async (registroId: string, estado: string, motivo?: string) => {
     return request<any>(`/asistencia/${registroId}/`, {
       method: "PATCH",
       body: JSON.stringify({ estado, motivo }),
     });
   },
-  getAsistenciaEstudiante: async (estudianteId: number) => {
+  getAsistenciaEstudiante: async (estudianteId: string) => {
     return request<any[]>(`/estudiantes/${estudianteId}/asistencia/`);
   },
   getAsistenciaGrados: async () => {
@@ -194,8 +194,10 @@ export const calificacionesAPI = {
     const result: Record<string, any> = {};
     for (const c of data.cursos || []) {
       result[c.curso] = {
-        id: c.curso_id,        // ✅ agrega el id real del curso
+        id: c.curso_id,
         abierto: false,
+        docente: c.docente || 'Sin docente',
+        materia: c.materia || 'Todas',
         actividades: (c.actividades || []).map((a: any) => ({
           id: a.id,
           nombre: a.nombre,
@@ -218,18 +220,18 @@ export const calificacionesAPI = {
       body: JSON.stringify({ estudianteId, actividadId, valor }),
     });
   },
-  crearActividad: async (cursoId: number, actividad: { nombre: string; peso: number; tipo: string }) => {
+  crearActividad: async (cursoId: string, actividad: { nombre: string; peso: number; tipo: string }) => {
     return request<any>("/calificaciones/actividades/", {
       method: "POST",
       body: JSON.stringify({ cursoId, nombre: actividad.nombre, peso: actividad.peso }),
     });
   },
-  publicarNotas: async (actividadId: number) => {
+  publicarNotas: async (actividadId: number | string) => {
     return request<any>(`/calificaciones/actividades/${actividadId}/publicar/`, {
       method: "POST",
     });
   },
-  despublicarNotas: async (actividadId: number) => {
+  despublicarNotas: async (actividadId: number | string) => {
     return request<any>(`/calificaciones/actividades/${actividadId}/despublicar/`, {
       method: "POST",
     });
@@ -243,7 +245,7 @@ export const calificacionesAPI = {
 };
 
 export const observacionesAPI = {
-  getObservacionesEstudiante: async (estudianteId: number) => {
+  getObservacionesEstudiante: async (estudianteId: string) => {
     return request<any[]>(`/observaciones/${buildQuery({ estudiante: estudianteId })}`);
   },
   crearObservacion: async (observacion: { estudianteId: string; tipo: string; desc: string; autor: string; rol: string }) => {
@@ -269,16 +271,57 @@ export const mensajesAPI = {
   getMensajesPara: async (rol: string) => {
     return request<any[]>(`/mensajes/${buildQuery({ para: rol })}`);
   },
-  marcarLeido: async (mensajeId: number) => {
+  marcarLeido: async (mensajeId: string | number) => {
     return request<any>(`/mensajes/${mensajeId}/leido/`, {
       method: "PATCH",
     });
+  },
+  getUsuariosPorRol: async (rol: string) => {
+    return request<Array<{ id: string; nombre: string }>>(`/usuarios/${buildQuery({ rol })}`);
   },
   enviarMensaje: async (mensaje: { destinatarios: string[]; asunto: string; contenido: string }) => {
     return request<any>("/mensajes/", {
       method: "POST",
       body: JSON.stringify(mensaje),
     });
+  },
+  enviarMensajePorRol: async (mensaje: { destinatarios: string | string[]; asunto: string; contenido: string }) => {
+    // Si destinatarios es un string, lo convierte a array
+    const roles = Array.isArray(mensaje.destinatarios) ? mensaje.destinatarios : [mensaje.destinatarios];
+    
+    // Obtener UUIDs para cada rol
+    const allUUIDs: Set<string> = new Set();
+    
+    for (const rol of roles) {
+      if (rol === 'todos') {
+        // Para 'todos', obtener todos los roles excepto el usuario actual
+        const rolesParaTodos = ['docente', 'coordinador', 'acudiente', 'estudiante'];
+        for (const r of rolesParaTodos) {
+          try {
+            const usuarios = await mensajesAPI.getUsuariosPorRol(r);
+            usuarios?.forEach((u: { id: string; nombre: string }) => allUUIDs.add(u.id));
+          } catch (err) {
+            console.warn(`Error obteniendo usuarios con rol ${r}:`, err);
+          }
+        }
+      } else {
+        try {
+          const usuarios = await mensajesAPI.getUsuariosPorRol(rol);
+          usuarios?.forEach((u: { id: string; nombre: string }) => allUUIDs.add(u.id));
+        } catch (err) {
+          console.warn(`Error obteniendo usuarios con rol ${rol}:`, err);
+        }
+      }
+    }
+
+    if (allUUIDs.size === 0) {
+      throw new Error('No hay destinatarios para enviar el mensaje.');
+    }
+
+    return mensajesAPI.enviarMensaje({
+      ...mensaje,
+      destinatarios: Array.from(allUUIDs),
+    }) as any;
   },
   getNoLeidos: async (rol: string) => {
     return request<{ total: number }>(`/mensajes/no-leidos/${buildQuery({ rol })}`);
@@ -362,6 +405,9 @@ export const coordinadorAPI = {
       const rojo = cursos.reduce((s: number, c: any) => s + c.rojo, 0);
       return { grado: g.nombre, total, verde, amarillo, rojo, cursos };
     });
+  },
+  getObservador: async () => {
+    return request<any>("/coordinador/observador/");
   },
 };
 

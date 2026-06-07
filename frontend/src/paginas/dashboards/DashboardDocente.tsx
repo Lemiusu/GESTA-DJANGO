@@ -11,7 +11,7 @@ import { useAuth } from "../../context/AuthContext";
 
 /* ─── TIPOS ─────────────────────────────────────────────────────── */
 interface Curso {
-  id: number;
+  id: string;
   nombre: string;
   estudiantes: number;
   presentes: number;
@@ -21,7 +21,7 @@ interface Curso {
 }
 
 interface EstudianteCurso {
-  id: number;
+  id: string;
   nombre: string;
   promedio: number;
   asistencia: number;
@@ -30,7 +30,11 @@ interface EstudianteCurso {
 }
 
 /* ─── DETALLE CURSO ──────────────────────────────────────────────── */
-function DetalleCurso({ cursoId, isMobile, estudiantesPorCurso }: { cursoId: number; isMobile: boolean; estudiantesPorCurso: Record<number, EstudianteCurso[]> }) {
+function DetalleCurso({ cursoId, isMobile, estudiantesPorCurso }: { 
+  cursoId: string; 
+  isMobile: boolean; 
+  estudiantesPorCurso: Record<string, EstudianteCurso[]>  // ← string
+}) {
   const estudiantes = estudiantesPorCurso[cursoId] || [];
   const riesgoLabel: Record<string, string> = { verde: "Verde", amarillo: "Amarillo", rojo: "Rojo" };
 
@@ -94,7 +98,7 @@ function DetalleCurso({ cursoId, isMobile, estudiantesPorCurso }: { cursoId: num
 
 /* ─── CARD CURSO ─────────────────────────────────────────────────── */
 function CardCurso({ curso, abierto, onToggle, isMobile, estudiantesPorCurso }: {
-  curso: Curso; abierto: boolean; onToggle: () => void; isMobile: boolean; estudiantesPorCurso: Record<number, EstudianteCurso[]>;
+  curso: Curso; abierto: boolean; onToggle: () => void; isMobile: boolean; estudiantesPorCurso: Record<string, EstudianteCurso[]>;
 }) {
   const estadoLabel: Record<string, string> = { verde: "Normal", amarillo: "Atención", rojo: "Crítico" };
   const riesgoNivel = curso.enRiesgo > 3 ? "rojo" : curso.enRiesgo > 1 ? "amarillo" : "verde";
@@ -170,7 +174,7 @@ function CardCurso({ curso, abierto, onToggle, isMobile, estudiantesPorCurso }: 
 export default function DashboardDocente() {
   const navigate = useNavigate();
   const [navActivo, setNavActivo] = useState("inicio");
-  const [cursosAbiertos, setCursosAbiertos] = useState<Record<number, boolean>>({});
+  const [cursosAbiertos, setCursosAbiertos] = useState<Record<string, boolean>>({});
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -186,7 +190,7 @@ export default function DashboardDocente() {
   const userRole = "";
 
   const [cursos, setCursos] = useState<Curso[]>([]);
-  const [estudiantesPorCurso, setEstudiantesPorCurso] = useState<Record<number, EstudianteCurso[]>>({});
+  const [estudiantesPorCurso, setEstudiantesPorCurso] = useState<Record<string, EstudianteCurso[]>>({});
   const [alertasCount, setAlertasCount] = useState(0);
 
   useEffect(() => {
@@ -235,20 +239,8 @@ export default function DashboardDocente() {
     fetchData();
   }, []);
 
-  useEffect(() => {
-    async function fetchDashboard() {
-      try {
-        const data = await docenteAPI.getDashboard();
-        setAlertasCount(data?.cursos?.length ?? 0);
-      } catch (err) {
-        console.warn("DashboardDocente: No se pudo cargar el dashboard desde la API", err);
-      }
-    }
-    fetchDashboard();
-  }, []);
-
   const ir = (ruta: string, id?: string) => { if (id) setNavActivo(id); navigate(`/dashboard/${ruta}`); };
-  const tog = (id: number) => setCursosAbiertos(prev => ({ ...prev, [id]: !prev[id] }));
+  const tog = (id: string) => setCursosAbiertos(prev => ({ ...prev, [id]: !prev[id] }));
 
   const totalEstudiantes = cursos.reduce((s, c) => s + c.estudiantes, 0);
   const totalPresentes = cursos.reduce((s, c) => s + c.presentes, 0);

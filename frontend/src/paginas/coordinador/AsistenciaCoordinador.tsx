@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import {
   C, S, Semaforo, Avatar, Sidebar, BottomNav,
   NAV_COORDINADOR, BOTTOM_NAV_COORDINADOR,
   isMobileWidth,
 } from "../../context/shared";
-// TODO: Descomentar cuando el módulo de servicios API esté disponible
-// import { asistenciaAPI } from "../../services/api";
+import { asistenciaAPI } from "../../services/api";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
 interface EstudianteAsistencia {
@@ -17,6 +17,7 @@ interface EstudianteAsistencia {
 
 interface CursoAsistencia {
   id: string;
+  curso: string;
   presentes: number;
   total: number;
   estudiantes: EstudianteAsistencia[];
@@ -31,27 +32,35 @@ interface GradoAsistencia {
 export default function AsistenciaCoordinador() {
   const navigate   = useNavigate();
   const isMobile   = isMobileWidth();
+  const { user } = useAuth();
 
   /* ── Nombre del usuario (debe venir de la sesión / API) ── */
-  // TODO: Reemplazar con datos del usuario autenticado cuando el backend esté conectado
-  const nombreUsuario = "";
-  const inicialesUsuario = "";
+  const nombreUsuario = user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.username || "Usuario";
 
   const [navActivo,    setNavActivo]    = useState("asistencia");
-  // TODO: Reemplazar con asistenciaAPI.getAsistenciaGrados() cuando el backend esté conectado
   const [gradosAsistencia, setGradosAsistencia] = useState<GradoAsistencia[]>([]);
   const [gradoAbierto, setGradoAbierto] = useState<string|null>(null);
   const [cursoActivo,  setCursoActivo]  = useState<string|null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
 
-  // TODO: Reemplazar con asistenciaAPI.getAsistenciaGrados() cuando el backend esté conectado
+  // Cargar datos de asistencia por grados
   useEffect(() => {
-    try {
-      // const data = await asistenciaAPI.getAsistenciaGrados();
-      // setGradosAsistencia(data);
-      console.warn("AsistenciaCoordinador: datos de asistencia no cargados — backend no conectado aún");
-    } catch (error) {
-      console.warn("Error cargando asistencia:", error);
+    async function loadData() {
+      try {
+        setCargando(true);
+        const data = await asistenciaAPI.getAsistenciaGrados();
+        setGradosAsistencia(data || []);
+        setError("");
+      } catch (err) {
+        console.error("Error cargando asistencia:", err);
+        setError("No se pudieron cargar los datos de asistencia");
+        setGradosAsistencia([]);
+      } finally {
+        setCargando(false);
+      }
     }
+    loadData();
   }, []);
 
   const ir = (ruta:string, id:string) => { setNavActivo(id); navigate(`/dashboard/${ruta}`); };
@@ -78,7 +87,6 @@ export default function AsistenciaCoordinador() {
           onNav={ir}
           usuario={nombreUsuario}
           subUsuario="Coordinador"
-          initials={inicialesUsuario}
         />
       )}
 
@@ -111,11 +119,19 @@ export default function AsistenciaCoordinador() {
 
           {/* Panel izquierdo: árbol grados → cursos */}
           <div style={{ width:isMobile?"100%":280, flexShrink:0, overflowY:"auto" }}>
-            {gradosAsistencia.length === 0 ? (
+            {cargando ? (
+              <div style={{ background:C.white, border:`1px solid ${C.gray200}`, borderRadius:12, padding:32, textAlign:"center", color:C.gray400, fontSize:13 }}>
+                Cargando asistencia...
+              </div>
+            ) : error ? (
+              <div style={{ background:C.redLight, border:`1px solid ${C.red}`, borderRadius:12, padding:16, textAlign:"center", color:C.red, fontSize:13 }}>
+                {error}
+              </div>
+            ) : gradosAsistencia.length === 0 ? (
               <div style={{ background:C.white, border:`1px solid ${C.gray200}`, borderRadius:12, padding:32, textAlign:"center", color:C.gray400, fontSize:13 }}>
                 No hay datos de asistencia disponibles.
               </div>
-            ) : gradosAsistencia.map(g => {
+            ) : gradosAsistencia.map((g, idx) => {
               const totalG   = g.cursos.reduce((s,c)=>s+c.total,0);
               const presG    = g.cursos.reduce((s,c)=>s+c.presentes,0);
               const pctG     = totalG > 0 ? Math.round((presG/totalG)*100) : 0;
@@ -123,7 +139,7 @@ export default function AsistenciaCoordinador() {
               const abierto  = gradoAbierto === g.grado;
 
               return (
-                <div key={g.grado} style={{ marginBottom:8 }}>
+                <div key={`grado-${g.grado}-${idx}`} style={{ marginBottom:8 }}>
                   {/* Header del grado */}
                   <button
                     onClick={() => setGradoAbierto(abierto?null:g.grado)}
@@ -131,10 +147,10 @@ export default function AsistenciaCoordinador() {
                   >
                     <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                       <div style={{ width:36, height:36, borderRadius:8, background:C.blueLight, color:C.blueText, fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                        {g.grado}
+                        {g.grado.replace('Grado ', '')}
                       </div>
                       <div>
-                        <p style={{ margin:0, fontSize:14, fontWeight:600, color:C.gray900 }}>Grado {g.grado}</p>
+                        <p style={{ margin:0, fontSize:14, fontWeight:600, color:C.gray900 }}>Grado {g.grado.replace('Grado ', '')}</p>
                         <p style={{ margin:0, fontSize:11, color:C.gray400 }}>{g.cursos.length} cursos · {presG}/{totalG}</p>
                       </div>
                     </div>
@@ -153,12 +169,12 @@ export default function AsistenciaCoordinador() {
                         const activo = cursoActivo === curso.id;
                         return (
                           <button
-                            key={curso.id}
+                            key={`curso-${g.grado}-${curso.id}-${ci}`}
                             onClick={() => setCursoActivo(curso.id)}
                             style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 14px 9px 24px", background:activo?C.blueLight:C.white, border:"none", borderBottom:ci<g.cursos.length-1?`1px solid ${C.gray100}`:"none", cursor:"pointer", textAlign:"left", fontFamily:"inherit" }}
                           >
                             <div>
-                              <p style={{ margin:0, fontSize:13, fontWeight:activo?700:500, color:activo?C.blue:C.gray800 }}>Curso {curso.id}</p>
+                              <p style={{ margin:0, fontSize:13, fontWeight:activo?700:500, color:activo?C.blue:C.gray800 }}>Curso {curso.curso}</p>
                               <p style={{ margin:0, fontSize:11, color:C.gray400 }}>{curso.presentes}/{curso.total} presentes</p>
                             </div>
                             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -185,7 +201,7 @@ export default function AsistenciaCoordinador() {
                   {/* Header */}
                   <div style={{ ...S.cardHead }}>
                     <div>
-                      <span style={{ fontSize:15, fontWeight:700, color:C.gray900 }}>Curso {cursoData.id}</span>
+                      <span style={{ fontSize:15, fontWeight:700, color:C.gray900 }}>Curso {cursoData.curso}</span>
                       <span style={{ fontSize:13, color:C.gray500, marginLeft:10 }}>{cursoData.presentes}/{cursoData.total} presentes hoy</span>
                     </div>
                     <Semaforo nivel={nivelPct(cursoData.total > 0 ? Math.round((cursoData.presentes/cursoData.total)*100) : 0)} label={`${cursoData.total > 0 ? Math.round((cursoData.presentes/cursoData.total)*100) : 0}%`} />
@@ -211,22 +227,30 @@ export default function AsistenciaCoordinador() {
                       </tr>
                     </thead>
                     <tbody>
-                      {cursoData.estudiantes.map((est, i) => (
-                        <tr key={est.id} style={{ background:i%2===0?C.white:C.gray50 }}>
-                          <td style={{ ...S.td, color:C.gray400, width:44 }}>{String(i+1).padStart(2,"0")}</td>
-                          <td style={S.td}>
-                            <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-                              <Avatar nombre={est.nombre} />
-                              <span style={{ fontSize:13, fontWeight:500, color:C.gray800 }}>{est.nombre}</span>
-                            </div>
-                          </td>
-                          <td style={S.td}>
-                            <span style={{ fontSize:12, fontWeight:600, padding:"3px 10px", borderRadius:8, background:est.estado==="P"?C.greenLight:C.redLight, color:est.estado==="P"?C.green:C.red }}>
-                              {est.estado==="P"?"Presente":"Ausente"}
-                            </span>
+                      {(cursoData.estudiantes || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={3} style={{ ...S.td, textAlign:"center", color:C.gray400 }}>
+                            Sin estudiantes registrados
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        (cursoData.estudiantes || []).map((est, i) => (
+                          <tr key={`est-${est.id}-${i}`} style={{ background:i%2===0?C.white:C.gray50 }}>
+                            <td style={{ ...S.td, color:C.gray400, width:44 }}>{String(i+1).padStart(2,"0")}</td>
+                            <td style={S.td}>
+                              <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+                                <Avatar nombre={est.nombre} />
+                                <span style={{ fontSize:13, fontWeight:500, color:C.gray800 }}>{est.nombre}</span>
+                              </div>
+                            </td>
+                            <td style={S.td}>
+                              <span style={{ fontSize:12, fontWeight:600, padding:"3px 10px", borderRadius:8, background:est.estado==="P"?C.greenLight:C.redLight, color:est.estado==="P"?C.green:C.red }}>
+                                {est.estado==="P"?"Presente":"Ausente"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
