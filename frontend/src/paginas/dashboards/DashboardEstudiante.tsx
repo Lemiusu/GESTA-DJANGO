@@ -6,8 +6,8 @@ import {
   IcoHome, IcoBook, IcoCheck, IcoBell, IcoEye, IcoMsg,
   isMobileWidth, TIPO_OBS_META, TIPO_MSG_META,
 } from "../../context/shared";
-import { estudianteAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
+import { estudianteAPI, observacionesAPI, asistenciaAPI } from "../../services/api";
 
 /* ─── TIPOS ────────────────────────────────────────────────────── */
 type EstudiantePerfil = {
@@ -186,13 +186,20 @@ function PanelNotas({ estudiante, isMobile }: { estudiante: EstudiantePerfil | n
 }
 
 /* ─── PANEL ASISTENCIA ────────────────────────────────────────── */
-function PanelAsistencia({ estudianteId, asistenciaFallback, isMobile }: { estudianteId: number | null; asistenciaFallback: number; isMobile: boolean }) {
-  const { getAsistenciaEstudiante } = useGESTA();
-  const registros = estudianteId !== null ? getAsistenciaEstudiante(estudianteId) : [];
+function PanelAsistencia({ estudianteId, isMobile }: { estudianteId: string | null; isMobile: boolean }) {
+  const [registros, setRegistros] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!estudianteId) return;
+    asistenciaAPI.getAsistenciaEstudiante(estudianteId)
+      .then(data => setRegistros(data))
+      .catch(err => console.warn("Error cargando asistencia:", err));
+  }, [estudianteId]);
+
   const presentes = registros.filter(r => r.estado === "presente").length;
   const ausentes = registros.filter(r => r.estado === "ausente").length;
   const justificados = registros.filter(r => r.estado === "justificado").length;
-  const pct = registros.length > 0 ? Math.round((presentes / registros.length) * 100) : asistenciaFallback;
+  const pct = registros.length > 0 ? Math.round((presentes / registros.length) * 100) : 0;
   const nivel = pct >= 90 ? "verde" : pct >= 80 ? "amarillo" : "rojo";
   const barColor = nivel === "verde" ? "#16a34a" : nivel === "amarillo" ? "#d97706" : C.red;
 
@@ -257,8 +264,16 @@ function PanelAsistencia({ estudianteId, asistenciaFallback, isMobile }: { estud
 
 /* ─── PANEL OBSERVACIONES ─────────────────────────────────────── */
 function PanelObservaciones({ estudianteId, isMobile }: { estudianteId: string | null; isMobile: boolean }) {
-  const { getObservacionesEstudiante } = useGESTA();
-  const obs = estudianteId !== null ? getObservacionesEstudiante(estudianteId) : [];
+  const [obs, setObs] = useState<any[]>([]);
+  useEffect(() => {
+    if (!estudianteId) return;
+    observacionesAPI.getObservacionesEstudiante(estudianteId)
+      .then(data => {
+        console.log("Observaciones recibidas:", data);  // ← agrega esta línea temporal
+        setObs(data);
+      })
+      .catch(err => console.warn("Error cargando observaciones:", err));
+  }, [estudianteId]);
 
   return (
     <div>
@@ -271,8 +286,8 @@ function PanelObservaciones({ estudianteId, isMobile }: { estudianteId: string |
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 14 }}>
         {[
           { label: "Disciplinarias", val: obs.filter(o => o.tipo === "Disciplinaria").length, color: C.red },
-          { label: "Académicas", val: obs.filter(o => o.tipo === "Academica").length, color: "#1e40af" },
-          { label: "Logros", val: obs.filter(o => o.tipo === "Logro").length, color: C.green },
+          { label: "Académicas",     val: obs.filter(o => o.tipo === "Académica").length,     color: "#1e40af" },  
+          { label: "Logros",         val: obs.filter(o => o.tipo === "Logro").length,         color: C.green },
         ].map(st => (
           <div key={st.label} style={{ background: C.white, border: `1px solid ${C.gray200}`, borderRadius: 10, padding: "12px 14px" }}>
             <p style={{ margin: 0, fontSize: 10, color: C.gray500 }}>{st.label}</p>
@@ -296,8 +311,8 @@ function PanelObservaciones({ estudianteId, isMobile }: { estudianteId: string |
                 <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 8, background: meta.bg, color: meta.color }}>{meta.label}</span>
                 <span style={{ fontSize: 10, color: C.gray400 }}>{o.fecha}</span>
               </div>
-              <p style={{ margin: "4px 0 2px", fontSize: 13, color: C.gray700 }}>{o.desc}</p>
-              <p style={{ margin: 0, fontSize: 11, color: C.gray400 }}>{o.autor} · {o.rol}</p>
+              <p style={{ margin: "4px 0 2px", fontSize: 13, color: C.gray700 }}>{o.descripcion}</p>
+              <p style={{ margin: 0, fontSize: 11, color: C.gray400 }}>{o.autor || "Docente"}</p>
             </div>
           );
         })}
@@ -553,7 +568,7 @@ export default function DashboardEstudiante() {
 
           {navActivo === "inicio" && <PanelInicio estudiante={estudiante} isMobile={isMobile} />}
           {navActivo === "notas" && <PanelNotas estudiante={estudiante} isMobile={isMobile} />}
-          {navActivo === "asistencia" && <PanelAsistencia estudianteId={estudiante?.id ?? null} asistenciaFallback={estudiante?.asistencia ?? 0} isMobile={isMobile} />}
+          {navActivo === "asistencia" && <PanelAsistencia estudianteId={estudiante?.id ?? null} isMobile={isMobile} />}
           {navActivo === "observaciones" && <PanelObservaciones estudianteId={estudiante?.id ?? null} isMobile={isMobile} />}
           {navActivo === "notificaciones" && <PanelNotificaciones isMobile={isMobile} />}
           {navActivo === "mensajes" && <PanelMensajes isMobile={isMobile} />}

@@ -25,9 +25,6 @@ type Estudiante = {
 };
 type Curso = { id: string; nombre: string; estudiantes: Estudiante[] };
 
-/* ─── DATOS (reemplazados por estados vacíos, pendiente backend) ── */
-// TODO: Reemplazar con cursosAPI.getCursosDocente() cuando el backend esté conectado
-// TODO: Reemplazar con observacionesAPI.getObservacionesCurso(cursoId) cuando el backend esté conectado
 const TIPOS = ["disciplinaria", "academica", "seguimiento", "logro"];
 const TIPO_LABELS = {
   "disciplinaria": "Disciplinaria",
@@ -100,7 +97,7 @@ function DetalleEstudiante({ estudiante, cursoNombre, extraObs, onBack, onAddObs
 
   function guardar() {
     if (!form.desc.trim()) return;
-    // TODO: Reemplazar con observacionesAPI.crearObservacion() para persistir en backend
+    const esPositiva = form.tipo === "logro";
     onAddObs(estudiante.id, { id: Date.now().toString(), tipo: form.tipo, descripcion: form.desc.trim(), fecha: "Ahora", autor: nombreUsuario, es_positiva: false });
     setForm({ estId: "", tipo: "academica", desc: "" });
     setShowForm(false);
@@ -292,7 +289,6 @@ export default function ObservadorDocente() {
       .then(data => {
         const agrupadas: Record<string, Obs[]> = {};
         for (const o of data) {
-          // ✅ Usa el ID directo en lugar de buscar por nombre
           const id = o.estudiante_id;
           if (!id) continue;
           if (!agrupadas[id]) agrupadas[id] = [];
@@ -333,6 +329,7 @@ export default function ObservadorDocente() {
         desc: obs.descripcion,
         autor: nombreUsuario,
         rol: "Docente",
+        es_positiva: obs.es_positiva,  // ← agrega esta línea
       });
     } catch (err) {
       console.warn("Error guardando observación:", err);
@@ -341,7 +338,7 @@ export default function ObservadorDocente() {
 
   function guardarForm() {
     if (!form.estId || !form.desc.trim()) return;
-    // TODO: Reemplazar con observacionesAPI.crearObservacion() para persistir en backend
+    const esPositiva = form.tipo === "logro";
     addObs(form.estId, { id: Date.now().toString(), tipo: form.tipo, descripcion: form.desc.trim(), fecha: "Ahora", autor: nombreUsuario, es_positiva: false });
     setForm({ estId: "", tipo: "academica", desc: "" });
     setShowForm(false);

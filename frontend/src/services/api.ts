@@ -248,14 +248,14 @@ export const observacionesAPI = {
   getObservacionesEstudiante: async (estudianteId: string) => {
     return request<any[]>(`/observaciones/${buildQuery({ estudiante: estudianteId })}`);
   },
-  crearObservacion: async (observacion: { estudianteId: string; tipo: string; desc: string; autor: string; rol: string }) => {
+  crearObservacion: async (observacion: { estudianteId: string; tipo: string; desc: string; autor: string; rol: string; es_positiva?: boolean }) => {
     return request<any>("/observaciones/", {
       method: "POST",
       body: JSON.stringify({
         estudiante: observacion.estudianteId,
-        tipo: observacion.tipo.toLowerCase(),  // ✅ convierte a minúscula
+        tipo: observacion.tipo.toLowerCase(),
         descripcion: observacion.desc,
-        es_positiva: false,
+        es_positiva: observacion.es_positiva ?? false,  // ← usa el valor recibido
       }),
     });
   },

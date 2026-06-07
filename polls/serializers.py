@@ -642,6 +642,9 @@ class ObservacionCrearSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['autor'] = self.context['request'].user
         validated_data['curso'] = validated_data['estudiante'].curso
+        # ── Forzar es_positiva=True cuando el tipo es 'logro' ──
+        if validated_data.get('tipo') == 'logro':
+            validated_data['es_positiva'] = True
         return super().create(validated_data)
 
 # ─── MENSAJES COORDINADOR ─────────────────────────────────────────────────────
@@ -1158,14 +1161,13 @@ class AsistenciaPublicarSerializer(serializers.Serializer):
     def create(self, validated_data):
         hoy = timezone.now().date()
         curso = self.context['curso']
+        docente_usuario = self.context['request'].user  # remitente del mensaje
 
-        # Crear o recuperar el registro del día
         registro, _ = RegistroAsistencia.objects.get_or_create(
             curso=curso,
             fecha=hoy,
         )
 
-        # Crear los detalles y cerrar el registro
         DetalleAsistencia.objects.bulk_create([
             DetalleAsistencia(
                 registro_asistencia=registro,
@@ -1177,6 +1179,40 @@ class AsistenciaPublicarSerializer(serializers.Serializer):
 
         registro.cerrado = True
         registro.save()
+
+        # ── Mensajes automáticos a acudientes de estudiantes ausentes ──
+        ausentes = [
+            item for item in validated_data['asistencias']
+            if item['estado'] == 'ausente'
+        ]
+
+        for item in ausentes:
+            try:
+                estudiante = Estudiante.objects.select_related(
+                    'acudiente__usuario'
+                ).get(pk=item['estudiante_id'])
+
+                acudiente = estudiante.acudiente
+                if not acudiente or not acudiente.usuario:
+                    continue  # este estudiante no tiene acudiente registrado
+
+                mensaje = Mensaje.objects.create(
+                    remitente=docente_usuario,
+                    asunto=f"Ausencia registrada – {curso.nombre} ({hoy.strftime('%d/%m/%Y')})",
+                    contenido=(
+                        f"Le informamos que su acudido/a "
+                        f"{estudiante.usuario.first_name} {estudiante.usuario.last_name} "
+                        f"fue registrado/a como AUSENTE el día {hoy.strftime('%d/%m/%Y')} "
+                        f"en el curso {curso.nombre}."
+                    ),
+                )
+                DestinatarioMensaje.objects.create(
+                    mensaje=mensaje,
+                    destinatario=acudiente.usuario,  # ← instancia de Usuario, no UUID
+                )
+            except Exception as e:
+                # El error no detiene el registro; solo se reporta en consola
+                print(f"[AVISO] No se pudo crear mensaje para estudiante {item['estudiante_id']}: {e}")
 
         return registro
 
@@ -1523,6 +1559,9 @@ class ObservacionDocenteCrearSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['autor'] = self.context['request'].user
         validated_data['curso'] = validated_data['estudiante'].curso
+        # ── Forzar es_positiva=True cuando el tipo es 'logro' ──
+        if validated_data.get('tipo') == 'logro':
+            validated_data['es_positiva'] = True
         return super().create(validated_data)
 
 

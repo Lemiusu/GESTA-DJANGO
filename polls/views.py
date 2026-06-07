@@ -595,7 +595,7 @@ class ObservacionesView(APIView):
         return Response([
             {
                 'id': o.id,
-                'estudiante_id': str(o.estudiante.id),  # ✅ agrega el id
+                'estudiante_id': str(o.estudiante.id), 
                 'estudiante': f'{o.estudiante.usuario.first_name} {o.estudiante.usuario.last_name}',
                 'tipo': o.get_tipo_display(),
                 'descripcion': o.descripcion,

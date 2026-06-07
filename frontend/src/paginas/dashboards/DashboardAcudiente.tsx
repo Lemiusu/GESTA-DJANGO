@@ -69,9 +69,10 @@ function ContenidoMaterias({ datos, isMobile }: { datos: DatosEstudiante; isMobi
 function ContenidoObsAcudiente({ datos, isMobile }: { datos: DatosEstudiante; isMobile: boolean }) {
   const tipoColor: Record<string, { bg: string; color: string }> = {
     Disciplinaria: { bg: C.redLight, color: C.red },
-    Academica: { bg: C.amberLight, color: C.amber },
+    "Académica":   { bg: C.amberLight, color: C.amber },
     Positiva: { bg: C.greenLight, color: C.green },
     Seguimiento: { bg: C.blueLight, color: C.blueText },
+    Logro:         { bg: C.greenLight, color: C.green },
   };
   if (!datos.observaciones || datos.observaciones.length === 0) {
     return <div style={{ padding: 24, textAlign: "center", fontSize: 12, color: C.gray400 }}>Sin observaciones.</div>;
@@ -166,15 +167,21 @@ export default function DashboardAcudiente() {
         promedio: perfil.promedio,
         asistencia: perfil.asistencia,
         materiasPerdidas: perfil.materiasPerdidas,
-        observacionesNeg: 0,
-        observacionesPos: 0,
+        observacionesNeg: (perfil.observaciones || []).filter((o: any) => !o.es_positiva).length,
+        observacionesPos: (perfil.observaciones || []).filter((o: any) => o.es_positiva).length,
         materias: (perfil.calificaciones || []).map((c: any) => ({
           nombre: c.asignatura,
           promedio: c.promedio ?? 0,
           perdida: (c.promedio ?? 0) < 3,
           notas: [],
         })),
-        observaciones: [],
+        observaciones: (perfil.observaciones || []).map((o: any) => ({  // ← cambia
+          fecha: o.fecha,
+          tipo: o.tipo,
+          contenido: o.descripcion,
+          autor: o.autor || "Docente",
+          rol: "Docente",
+        })),
         notificaciones: [],
       }))
       .catch(err => console.warn("No se pudieron cargar los datos del estudiante:", err));

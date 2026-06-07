@@ -147,10 +147,16 @@ function ContenidoCurso({ cursoId, nombreCurso, data, isMobile, onError, onSucce
 }) {
   const [estados, setEstados] = useState<Record<number, string>>(() => {
     const init: Record<number, string> = {};
-    data.estudiantes.forEach(e => { init[e.id] = "P"; });
+    data.estudiantes.forEach(e => {
+      // el backend devuelve 'presente' o 'ausente', el frontend usa 'P' o 'A'
+      const estadoBackend = (e as any).estado;
+      init[e.id] = estadoBackend === "ausente" ? "A" : "P";
+    });
     return init;
   });
-  const [guardado, setGuardado] = useState(false);
+  const [guardado, setGuardado] = useState(() =>
+    data.estudiantes.length > 0 && data.estudiantes.every(e => (e as any).estado != null)
+  );
   const [cargando, setCargando] = useState(false);
   const [modal,    setModal]    = useState(false);
   const [filtro,   setFiltro]   = useState("todos");
@@ -188,16 +194,14 @@ function ContenidoCurso({ cursoId, nombreCurso, data, isMobile, onError, onSucce
         .filter(Boolean);
 
       if (estudiantesAusentes.length > 0) {
-        const nombresAusentes = estudiantesAusentes.map(e => e!.nombre).join(", ");
         try {
-          await mensajesAPI.enviarMensaje({
-            destinatarios: ["acudiente"], // Se enviará a acudientes de los estudiantes
+          await mensajesAPI.enviarMensajePorRol({
+            destinatarios: "acudiente",
             asunto: `Notificación de inasistencia - ${nombreCurso}`,
-            contenido: `Se registró inasistencia para los siguientes estudiantes el ${new Date().toLocaleDateString('es-CO')}: ${nombresAusentes}. Por favor, contacte al docente si tiene alguna inquietud.`,
+            contenido: `Se registró inasistencia para los siguientes estudiantes el ${new Date().toLocaleDateString('es-CO')}: ${estudiantesAusentes.map(e => e!.nombre).join(", ")}. Por favor, contacte al docente si tiene alguna inquietud.`,
           });
         } catch (notifError) {
           console.warn("No se pudieron enviar notificaciones a acudientes:", notifError);
-          // No lanzar error aquí para no afectar el guardado exitoso de asistencia
         }
       }
 
