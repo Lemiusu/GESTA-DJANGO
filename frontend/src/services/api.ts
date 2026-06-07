@@ -194,6 +194,7 @@ export const calificacionesAPI = {
     const result: Record<string, any> = {};
     for (const c of data.cursos || []) {
       result[c.curso] = {
+        id: c.curso_id,        // ✅ agrega el id real del curso
         abierto: false,
         actividades: (c.actividades || []).map((a: any) => ({
           id: a.id,
@@ -245,13 +246,18 @@ export const observacionesAPI = {
   getObservacionesEstudiante: async (estudianteId: number) => {
     return request<any[]>(`/observaciones/${buildQuery({ estudiante: estudianteId })}`);
   },
-  crearObservacion: async (observacion: { estudianteId: number; tipo: string; desc: string; autor: string; rol: string }) => {
+  crearObservacion: async (observacion: { estudianteId: string; tipo: string; desc: string; autor: string; rol: string }) => {
     return request<any>("/observaciones/", {
       method: "POST",
-      body: JSON.stringify({ estudiante: observacion.estudianteId, tipo: observacion.tipo, descripcion: observacion.desc, es_positiva: false }),
+      body: JSON.stringify({
+        estudiante: observacion.estudianteId,
+        tipo: observacion.tipo.toLowerCase(),  // ✅ convierte a minúscula
+        descripcion: observacion.desc,
+        es_positiva: false,
+      }),
     });
   },
-  getObservacionesCurso: async (cursoId: number) => {
+  getObservacionesCurso: async (cursoId: string) => {
     return request<any[]>(`/observaciones/${buildQuery({ curso: cursoId })}`);
   },
   getObservacionesRecientes: async () => {
@@ -310,13 +316,13 @@ export const estudiantesAPI = {
       condicion: e.descripcion_condicion || null,
     }));
   },
-  getPerfilEstudiante: async (estudianteId: number) => {
+  getPerfilEstudiante: async (estudianteId: string) => {
     return request<any>(`/estudiantes/${estudianteId}/perfil/`);
   },
-  getCondicion: async (estudianteId: number) => {
+  getCondicion: async (estudianteId: string) => {
     return request<any>(`/estudiantes/${estudianteId}/condicion/`);
   },
-  setCondicion: async (estudianteId: number, condicion: { esRepitente: boolean; descripcionRepitente?: string; condicionInclusion?: string }) => {
+  setCondicion: async (estudianteId: string, condicion: { esRepitente: boolean; descripcionRepitente?: string; condicionInclusion?: string }) => {
     return request<any>(`/estudiantes/${estudianteId}/condicion/`, {
       method: "PUT",
       body: JSON.stringify(condicion),
@@ -369,7 +375,7 @@ export const acudienteAPI = {
       curso: e.curso,
     }));
   },
-  getDatosEstudiante: async (estudianteId: number) => {
+  getDatosEstudiante: async (estudianteId: string) => {
     return request<any>(`/estudiantes/${estudianteId}/datos-acudiente/`);
   },
 };

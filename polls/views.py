@@ -23,6 +23,7 @@ from .serializers import (
     CalificacionesCoordinadorSerializer, ObservadorCoordinadorSerializer,
     ObservacionCrearSerializer, BandejaSerializer, MensajeCrearSerializer,
     MensajeResponderSerializer, DashboardCoordinadorSerializer,
+    DashboardDocenteSerializer,
 )
 
 
@@ -67,6 +68,8 @@ class CoordinadorEstadoGradosView(APIView):
         return Response({'cursos_por_grado': serializer.data.get('cursos_por_grado', [])})
 
 
+# ─── DOCENTE ──────────────────────────────────────────────────────────────────
+
 class DocenteCursosView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -75,9 +78,16 @@ class DocenteCursosView(APIView):
         if docente_id:
             docente = get_object_or_404(Usuario, pk=docente_id).docente
         if not docente:
-            return Response({'detail': 'Docente no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'detail': 'Docente no encontrado.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-        cursos = Curso.objects.filter(docente_titular=docente).select_related('grado').prefetch_related('estudiantes__usuario')
+        # Cursos donde el docente dicta alguna asignatura (no solo titular)
+        cursos = Curso.objects.filter(
+            asignaturas__docente=docente
+        ).distinct().select_related('grado').prefetch_related('estudiantes__usuario')
+
         resultado = []
         for curso in cursos:
             resultado.append({
@@ -104,23 +114,19 @@ class DocenteDashboardView(APIView):
         if docente_id:
             docente = get_object_or_404(Usuario, pk=docente_id).docente
         if not docente:
-            return Response({'detail': 'Docente no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'detail': 'Docente no encontrado.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-        cursos = Curso.objects.filter(docente_titular=docente).select_related('grado').prefetch_related('estudiantes__usuario')
-        return Response({
-            'docente': UsuarioSerializer(docente.usuario).data,
-            'cursos': [
-                {
-                    'id': curso.id,
-                    'nombre': curso.nombre,
-                    'grado': curso.grado.nombre if curso.grado else None,
-                    'numero_estudiantes': curso.estudiantes.count(),
-                }
-                for curso in cursos
-            ],
-            'total_estudiantes': sum(curso.estudiantes.count() for curso in cursos),
-        })
+        serializer = DashboardDocenteSerializer(
+            instance={},
+            context={'docente': docente, 'request': request}
+        )
+        return Response(serializer.data)
 
+
+# ─── CURSOS / ESTUDIANTES ──────────────────────────────────────────────────────
 
 class CursoEstudiantesView(APIView):
     permission_classes = [IsAuthenticated]
@@ -179,6 +185,8 @@ class EstudianteCalificacionesView(APIView):
         return Response(serializer.data.get('calificaciones', []))
 
 
+# ─── ASISTENCIA ───────────────────────────────────────────────────────────────
+
 class AsistenciaRegistroView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -194,13 +202,18 @@ class AsistenciaRegistroView(APIView):
             except ValueError:
                 return Response({'detail': 'Fecha inválida.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        cursos = Curso.objects.all().prefetch_related('estudiantes__usuario', 'registros_asistencia__detalles__estudiante__usuario')
+        cursos = Curso.objects.all().prefetch_related(
+            'estudiantes__usuario',
+            'registros_asistencia__detalles__estudiante__usuario'
+        )
         if curso_id:
             cursos = cursos.filter(pk=curso_id)
 
         resultado = {}
         for curso in cursos:
-            registro = curso.registros_asistencia.filter(fecha=fecha_obj).prefetch_related('detalles__estudiante__usuario').first()
+            registro = curso.registros_asistencia.filter(fecha=fecha_obj).prefetch_related(
+                'detalles__estudiante__usuario'
+            ).first()
             estudiantes = []
             for e in curso.estudiantes.all():
                 detalle = None
@@ -225,7 +238,10 @@ class AsistenciaRegistroView(APIView):
         fecha_str = request.data.get('fecha')
 
         if not curso_id or not isinstance(detalles, list):
-            return Response({'detail': 'curso_id y detalles son obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': 'curso_id y detalles son obligatorios.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         curso = get_object_or_404(Curso, pk=curso_id)
         fecha_obj = date.today()
@@ -235,19 +251,24 @@ class AsistenciaRegistroView(APIView):
             except ValueError:
                 return Response({'detail': 'Fecha inválida.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        registro, _ = RegistroAsistencia.objects.get_or_create(curso=curso, fecha=fecha_obj)
+        registro, created = RegistroAsistencia.objects.get_or_create(curso=curso, fecha=fecha_obj)
+
         for item in detalles:
             estudiante_id = item.get('estudiante_id')
             estado_raw = item.get('estado')
             motivo = item.get('motivo')
             estudiante = get_object_or_404(Estudiante, pk=estudiante_id)
             estado = 'presente' if estado_raw in ('P', 'presente') else 'ausente'
-            detalle, created = DetalleAsistencia.objects.get_or_create(
+            detalle, det_created = DetalleAsistencia.objects.get_or_create(
                 registro_asistencia=registro,
                 estudiante=estudiante,
-                defaults={'estado': estado, 'motivo_justificacion': motivo, 'modificado_por': request.user}
+                defaults={
+                    'estado': estado,
+                    'motivo_justificacion': motivo,
+                    'modificado_por': request.user,
+                }
             )
-            if not created:
+            if not det_created:
                 detalle.estado = estado
                 detalle.motivo_justificacion = motivo
                 detalle.modificado_por = request.user
@@ -269,15 +290,10 @@ class AsistenciaGradosView(APIView):
         for curso in grados:
             grado_nombre = curso.grado.nombre if curso.grado else 'Sin grado'
             if grado_nombre not in grados_map:
-                grados_map[grado_nombre] = {
-                    'grado': grado_nombre,
-                    'cursos': []
-                }
+                grados_map[grado_nombre] = {'grado': grado_nombre, 'cursos': []}
 
             registro = curso.registros_asistencia.filter(fecha=hoy).first()
-            presentes = 0
-            ausentes = 0
-            total = 0
+            presentes = ausentes = total = 0
             if registro:
                 total = registro.detalles.count()
                 presentes = registro.detalles.filter(estado__in=['presente', 'justificado']).count()
@@ -328,6 +344,8 @@ class AsistenciaDetalleUpdateView(APIView):
         return Response(serializer.data)
 
 
+# ─── CALIFICACIONES ───────────────────────────────────────────────────────────
+
 class CalificacionesCursosView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -340,26 +358,29 @@ class CalificacionesCursosView(APIView):
         resultado = []
         for curso in cursos:
             estudiantes = list(curso.estudiantes.all())
-            notas = {est.id: {} for est in estudiantes}
+            notas = {str(est.id): {} for est in estudiantes}
             actividades = []
             for asignatura in curso.asignaturas.all():
                 for actividad in asignatura.actividades.all():
                     actividades.append({
-                        'id': actividad.id,
+                        'id': str(actividad.id),   # ← también convertir a string
                         'nombre': actividad.nombre,
                         'peso': float(actividad.porcentaje),
                         'publicada': actividad.estado == 'publicada',
                     })
                     for estudiante in estudiantes:
                         calificacion = actividad.calificaciones.filter(estudiante=estudiante).first()
-                        notas[estudiante.id][actividad.id] = '' if not calificacion or calificacion.valor is None else str(calificacion.valor)
+                        notas[str(estudiante.id)][str(actividad.id)] = (
+                            '' if not calificacion or calificacion.valor is None
+                            else str(calificacion.valor)
+                        )
 
             resultado.append({
                 'curso_id': curso.id,
                 'curso': curso.nombre,
                 'actividades': actividades,
                 'estudiantes': [
-                    {'id': e.id, 'nombre': f'{e.usuario.first_name} {e.usuario.last_name}', 'condicion': e.descripcion_condicion if e.tiene_condicion_especial else None}
+                    {'id': str(e.id), 'nombre': f'{e.usuario.first_name} {e.usuario.last_name}', 'condicion': e.descripcion_condicion if e.tiene_condicion_especial else None}
                     for e in estudiantes
                 ],
                 'notas': notas,
@@ -374,26 +395,46 @@ class GuardarNotaView(APIView):
         estudiante_id = request.data.get('estudianteId') or request.data.get('estudiante_id')
         actividad_id = request.data.get('actividadId') or request.data.get('actividad_id')
         valor_raw = request.data.get('valor')
-        if not estudiante_id or not actividad_id or valor_raw is None:
-            return Response({'detail': 'estudiante_id, actividad_id y valor son obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not estudiante_id or not actividad_id:
+            return Response(
+                {'detail': 'estudiante_id y actividad_id son obligatorios.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         estudiante = get_object_or_404(Estudiante, pk=estudiante_id)
         actividad = get_object_or_404(ActividadEvaluativa, pk=actividad_id)
-        try:
-            valor = Decimal(str(valor_raw).replace(',', '.'))
-        except (InvalidOperation, TypeError):
-            return Response({'detail': 'Valor de nota inválido.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        calificacion, _ = Calificacion.objects.get_or_create(
+        # ✅ Valor vacío o None se guarda como null, no como error
+        if valor_raw is None or str(valor_raw).strip() == "":
+            valor = None
+        else:
+            try:
+                valor = Decimal(str(valor_raw).replace(',', '.'))
+                if not (0 <= valor <= 5):
+                    return Response(
+                        {'detail': 'El valor debe estar entre 0.0 y 5.0.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except (InvalidOperation, TypeError):
+                return Response(
+                    {'detail': 'Valor de nota inválido.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        calificacion, created = Calificacion.objects.get_or_create(
             actividad_evaluativa=actividad,
             estudiante=estudiante,
             defaults={'valor': valor}
         )
-        if calificacion.valor != valor:
+        if not created and calificacion.valor != valor:
             calificacion.valor = valor
             calificacion.save()
 
-        return Response({'detail': 'Nota guardada.', 'valor': str(calificacion.valor)})
+        return Response({
+            'detail': 'Nota guardada.',
+            'valor': str(calificacion.valor) if calificacion.valor is not None else None
+        })
 
 
 class CrearActividadView(APIView):
@@ -430,12 +471,45 @@ class PublicarActividadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        actividad = get_object_or_404(ActividadEvaluativa, pk=pk)
+        actividad = get_object_or_404(
+            ActividadEvaluativa.objects.select_related(
+                'asignatura__curso'
+            ).prefetch_related(
+                'asignatura__curso__estudiantes__acudiente__usuario'
+            ),
+            pk=pk
+        )
         actividad.estado = 'publicada'
         actividad.fecha_publicacion = timezone.now()
         actividad.publicado_por = request.user
         actividad.save()
-        return Response({'detail': 'Actividad publicada.'})
+
+        # Notificar a los acudientes de los estudiantes del curso
+        curso = actividad.asignatura.curso
+        mensajes_creados = []
+        for estudiante in curso.estudiantes.all():
+            acudiente = estudiante.acudiente
+            if not acudiente:
+                continue
+            mensaje = Mensaje.objects.create(
+                remitente=request.user,
+                asunto=f"Notas publicadas: {actividad.nombre} - {curso.nombre}",
+                contenido=(
+                    f"Se han publicado las calificaciones de la actividad "
+                    f'"{actividad.nombre}" para el curso {curso.nombre}. '
+                    f"Ya puede revisar las notas de su acudido en la plataforma."
+                ),
+            )
+            DestinatarioMensaje.objects.create(
+                mensaje=mensaje,
+                destinatario=acudiente.usuario,
+            )
+            mensajes_creados.append(acudiente.usuario.id)
+
+        return Response({
+            'detail': 'Actividad publicada.',
+            'notificados': len(mensajes_creados),
+        })
 
 
 class DespublicarActividadView(APIView):
@@ -456,6 +530,8 @@ class CalificacionesCoordinadorView(APIView):
         return Response(serializer.data)
 
 
+# ─── OBSERVACIONES ────────────────────────────────────────────────────────────
+
 class ObservacionesView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -471,6 +547,7 @@ class ObservacionesView(APIView):
         return Response([
             {
                 'id': o.id,
+                'estudiante_id': str(o.estudiante.id),  # ✅ agrega el id
                 'estudiante': f'{o.estudiante.usuario.first_name} {o.estudiante.usuario.last_name}',
                 'tipo': o.get_tipo_display(),
                 'descripcion': o.descripcion,
@@ -506,6 +583,8 @@ class ObservacionesRecientesView(APIView):
             for o in resultados
         ])
 
+
+# ─── MENSAJES ─────────────────────────────────────────────────────────────────
 
 class MensajesView(APIView):
     permission_classes = [IsAuthenticated]
@@ -563,6 +642,8 @@ class MensajesNoLeidosView(APIView):
         return Response({'total': total})
 
 
+# ─── ALERTAS ──────────────────────────────────────────────────────────────────
+
 class AlertasView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -610,6 +691,8 @@ class AlertasResolverView(APIView):
         alerta.save()
         return Response({'detail': 'Alerta resuelta.'})
 
+
+# ─── ESTUDIANTES ──────────────────────────────────────────────────────────────
 
 class EstudiantesParaAlertasView(APIView):
     permission_classes = [IsAuthenticated]
@@ -691,6 +774,8 @@ class EstudianteAsistenciaView(APIView):
         ])
 
 
+# ─── MENSAJES EXTRAS ──────────────────────────────────────────────────────────
+
 class MensajeResponderView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -719,4 +804,3 @@ class ObservadorCoordinadorView(APIView):
 
 def index(request):
     return Response({'detail': "API raíz del módulo polls."})
-

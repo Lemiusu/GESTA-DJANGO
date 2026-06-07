@@ -7,11 +7,13 @@ import {
   isMobileWidth,
 } from "../../context/shared";
 import { calificacionesAPI } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
 interface Actividad { id: number; nombre: string; peso: number; publicada?: boolean }
 interface Estudiante { id: number; nombre: string; condicion?: string | null }
 interface CursoData {
+  id: number;           // ← nuevo
   abierto: boolean;
   actividades: Actividad[];
   estudiantes: Estudiante[];
@@ -93,8 +95,10 @@ function parsearNota(val: string): number | null {
   return isNaN(num) ? null : num;
 }
 /* ─── TABLA DE CURSO ─────────────────────────────────────────────── */
-function TablaCurso({ nombreCurso, cursoData, onUpdate, isMobile }: {
-  nombreCurso: string; cursoData: CursoData;
+function TablaCurso({ nombreCurso, cursoId, cursoData, onUpdate, isMobile }: {
+  nombreCurso: string;
+  cursoId: number;      // ← nuevo
+  cursoData: CursoData;
   onUpdate: (nombre: string, estId: number | null, actId: number | null, val: string | null, nuevaAct?: Actividad, publicarActId?: number, despublicarActId?: number) => void;
   isMobile: boolean;
 }) {
@@ -104,7 +108,8 @@ function TablaCurso({ nombreCurso, cursoData, onUpdate, isMobile }: {
   const [mensajePublicacion, setMensajePublicacion] = useState<{actId: number; nombre: string} | null>(null);
 
   // TODO: Reemplazar con el nombre del docente obtenido del contexto de autenticación
-  const nombreDocente = "Docente";
+  const { nombreCompleto } = useAuth();
+  const nombreDocente = nombreCompleto() || "Docente";
 
 const calcProm = (estId: number) => {
   if (actividades.length === 0) return null;
@@ -121,44 +126,53 @@ const calcProm = (estId: number) => {
   const setNota = (estId: number, actId: number, val: string) => {
     if (val !== "" && (parseFloat(val) < 0 || parseFloat(val) > 5)) return;
     onUpdate(nombreCurso, estId, actId, val);
-    // TODO: Reemplazar con calificacionesAPI.guardarNota() para persistir en backend
+    // ✅ Persistir en backend
+    calificacionesAPI.guardarNota(String(cursoId), String(estId), String(actId), val)
+      .catch(err => console.warn("Error guardando nota:", err));
   };
 
   const agregarActividad = (act: { nombre: string; peso: number; tipo: string }) => {
-    const newId = actividades.length > 0 ? Math.max(...actividades.map(a => a.id)) + 1 : 1;
-    onUpdate(nombreCurso, null, null, null, { ...act, id: newId, publicada: false });
     setMostrarModal(false);
-    // TODO: Reemplazar con calificacionesAPI.crearActividad() para crear en backend
+    calificacionesAPI.crearActividad(cursoId, act)
+      .then(actCreada => {
+        // Usamos el ID real devuelto por el backend
+        onUpdate(nombreCurso, null, null, null, {
+          id: actCreada.id,
+          nombre: actCreada.nombre,
+          peso: actCreada.peso,
+          publicada: false,
+        });
+      })
+      .catch(err => {
+        console.warn("Error creando actividad:", err);
+        // Fallback: ID temporal local si el backend falla
+        const newId = actividades.length > 0 ? Math.max(...actividades.map(a => a.id)) + 1 : 1;
+        onUpdate(nombreCurso, null, null, null, { ...act, id: newId, publicada: false });
+      });
   };
-
+  
   const publicarActividad = (actId: number) => {
     const actividad = actividades.find(a => a.id === actId);
     if (!actividad) return;
-
-    onUpdate(nombreCurso, null, null, null, undefined, actId);
-
-    // TODO: Reemplazar con calificacionesAPI.publicarNotas() para publicar en backend
-    // TODO: Reemplazar agregarMensaje con mensajesAPI.enviarMensaje() cuando el backend esté conectado
-    const fecha = new Date();
-    const fechaStr = `${fecha.getHours()}:${fecha.getMinutes().toString().padStart(2, '0')}`;
-    agregarMensaje({
-      de: nombreDocente,
-      rolDe: "Docente",
-      para: "acudiente",
-      asunto: `Notas publicadas: ${actividad.nombre} - ${nombreCurso}`,
-      contenido: `Se han publicado las calificaciones de la actividad "${actividad.nombre}" para el curso ${nombreCurso}. Ya puede revisar las notas de su acudido en la plataforma.`,
-      fecha: `Hoy ${fechaStr}`,
-      leido: false,
-      tipo: "notas"
-    });
-
-    setMensajePublicacion({ actId, nombre: actividad.nombre });
-    setTimeout(() => setMensajePublicacion(null), 4000);
+  
+    calificacionesAPI.publicarNotas(actId)
+      .then(() => {
+        // ✅ Actualiza el estado local
+        onUpdate(nombreCurso, null, null, null, undefined, actId);
+  
+        // ✅ Muestra confirmación temporal
+        setMensajePublicacion({ actId, nombre: actividad.nombre });
+        setTimeout(() => setMensajePublicacion(null), 4000);
+  
+        // ❌ Eliminada la llamada a agregarMensaje — el backend ya notifica a los acudientes
+      })
+      .catch(err => console.warn("Error publicando actividad:", err));
   };
-
+  
   const despublicarActividad = (actId: number) => {
-    onUpdate(nombreCurso, null, null, null, undefined, undefined, actId);
-    // TODO: Reemplazar con calificacionesAPI.despublicarNotas() cuando el backend esté conectado
+    calificacionesAPI.despublicarNotas(actId)
+      .then(() => onUpdate(nombreCurso, null, null, null, undefined, undefined, actId))
+      .catch(err => console.warn("Error despublicando actividad:", err));
   };
 
   const getSinCalificarPorActividad = (actId: number) => {
@@ -446,7 +460,8 @@ export default function IngresoNotas() {
   }, []);
 
   // TODO: Reemplazar con el nombre del docente obtenido del contexto de autenticación
-  const nombreDocente = "Docente";
+  const { nombreCompleto } = useAuth();
+  const nombreDocente = nombreCompleto() || "Docente";
 
   const ir = (ruta: string, id?: string) => { if (id) setNavActivo(id); navigate(`/dashboard/${ruta}`); };
 
@@ -526,7 +541,13 @@ export default function IngresoNotas() {
                 </div>
               </button>
               {data.abierto && (
-                <TablaCurso nombreCurso={nombre} cursoData={data} onUpdate={handleUpdate} isMobile={isMobile} />
+                <TablaCurso 
+                nombreCurso={nombre} 
+                cursoId={data.id}    // ← nuevo
+                cursoData={data} 
+                onUpdate={handleUpdate} 
+                isMobile={isMobile} 
+              />
               )}
             </div>
           ))}

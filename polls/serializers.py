@@ -8,6 +8,7 @@ from .models import (
 )
 from django.utils import timezone
 from django.db.models import Sum, F, ExpressionWrapper, DecimalField, Q, Count
+from datetime import date
 
 
 # ─── HELPER ──────────────────────────────────────────────────────────────────
@@ -849,7 +850,7 @@ class DashboardDocenteSerializer(serializers.Serializer):
 
     def get_resumen(self, obj):
         docente = self.context['docente']
-        hoy = timezone.now().date()
+        hoy = hoy = date.today()
 
         # IDs de todos los cursos donde el docente tiene asignaturas
         curso_ids = Asignatura.objects.filter(
@@ -885,7 +886,7 @@ class DashboardDocenteSerializer(serializers.Serializer):
 
     def get_asignaturas(self, obj):
         docente = self.context['docente']
-        hoy = timezone.now().date()
+        hoy = date.today()  # ✅ usa date.today() en lugar de timezone.now().date()
         periodo_activo = PeriodoAcademico.objects.filter(activo=True).first()
 
         asignaturas = Asignatura.objects.filter(
@@ -894,17 +895,24 @@ class DashboardDocenteSerializer(serializers.Serializer):
             'curso__estudiantes__usuario',
             'curso__estudiantes__observaciones',
             'curso__estudiantes__alertas',
-            'curso__registros_asistencia__detalles',
         )
+
+        # ✅ Precarga los registros de HOY en un solo query antes del loop
+        curso_ids = asignaturas.values_list('curso_id', flat=True).distinct()
+        registros_hoy = {
+            r.curso_id: r
+            for r in RegistroAsistencia.objects.filter(
+                curso_id__in=curso_ids,
+                fecha=hoy,
+            ).prefetch_related('detalles')
+        }
 
         resultado = []
         for asignatura in asignaturas:
             curso = asignatura.curso
-            estudiantes = curso.estudiantes.all()
-            total_estudiantes = estudiantes.count()
 
-            # Asistencia hoy del curso
-            registro_hoy = curso.registros_asistencia.filter(fecha=hoy).first()
+            # ✅ Lookup directo en el diccionario, sin filtrar sobre prefetch
+            registro_hoy = registros_hoy.get(curso.id)
             detalles_hoy = registro_hoy.detalles.all() if registro_hoy else []
             total_hoy = len(detalles_hoy)
             presentes_hoy = sum(
@@ -957,16 +965,16 @@ class DashboardDocenteSerializer(serializers.Serializer):
                 'id': asignatura.id,
                 'nombre': asignatura.nombre,
                 'curso': curso.nombre,
-                'num_estudiantes': total_estudiantes,
+                'num_estudiantes': curso.estudiantes.count(),  # ✅
                 'porcentaje_asistencia_hoy': (
                     round((presentes_hoy / total_hoy) * 100, 1)
                     if total_hoy > 0 else None
                 ),
                 'promedio': promedio_asignatura,
                 'estudiantes_en_riesgo': sum(
-                    1 for e in estudiantes
+                    1 for e in qs_estudiantes
                     if e.riesgo in ['medio', 'alto']
-                ),
+                ),  # ✅
                 'estudiantes': detalle_estudiantes,
             })
 

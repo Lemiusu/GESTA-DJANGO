@@ -7,13 +7,13 @@ import {
   TIPO_OBS_META, TIPO_ICON_COLOR,
   isMobileWidth,
 } from "../../context/shared";
-// TODO: Descomentar cuando el backend esté conectado
-// import { observacionesAPI, cursosAPI } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
+import { docenteAPI, observacionesAPI } from "../../services/api";
 
 /* ─── TIPOS ──────────────────────────────────────────────────────── */
 type Obs = { tipo:string; desc:string; fecha:string; autor:string };
-type Estudiante = { id:number; nombre:string; riesgo:string; asistencia:number; promedio:number; obs:Obs[]; condicion?:string|null };
-type Curso = { id:number; nombre:string; estudiantes:Estudiante[] };
+type Estudiante = { id: string; nombre: string; riesgo: string; asistencia: number; promedio: number; obs: Obs[]; condicion?: string | null };
+type Curso = { id:string; nombre:string; estudiantes:Estudiante[] };
 
 /* ─── DATOS (reemplazados por estados vacíos, pendiente backend) ── */
 // TODO: Reemplazar con cursosAPI.getCursosDocente() cuando el backend esté conectado
@@ -27,12 +27,12 @@ function countByTipo(obs: { tipo:string }[]) {
 
 /* ─── FORMULARIO DE OBSERVACIÓN ──────────────────────────────────── */
 function FormObservacion({ titulo, estudiantes, form, setForm, onGuardar, onCancelar }: {
-  titulo:string;
-  estudiantes?: { id:number; nombre:string }[];
-  form: { estId:string; tipo:string; desc:string };
-  setForm: React.Dispatch<React.SetStateAction<{ estId:string; tipo:string; desc:string }>>;
-  onGuardar: ()=>void;
-  onCancelar: ()=>void;
+  titulo: string;
+  estudiantes?: { id: string; nombre: string }[];  // ← string
+  form: { estId: string; tipo: string; desc: string };
+  setForm: React.Dispatch<React.SetStateAction<{ estId: string; tipo: string; desc: string }>>;
+  onGuardar: () => void;
+  onCancelar: () => void;
 }) {
   return (
     <div style={{ ...S.card, background:C.gray50 }}>
@@ -70,9 +70,11 @@ function FormObservacion({ titulo, estudiantes, form, setForm, onGuardar, onCanc
 
 /* ─── DETALLE ESTUDIANTE ─────────────────────────────────────────── */
 function DetalleEstudiante({ estudiante, cursoNombre, extraObs, onBack, onAddObs, nombreUsuario }: {
-  estudiante:Estudiante; cursoNombre:string;
-  extraObs:Record<number,Obs[]>; onBack:()=>void;
-  onAddObs:(estId:number, obs:Obs)=>void;
+  estudiante: Estudiante;
+  cursoNombre: string;
+  extraObs: Record<string, Obs[]>;  // ← string
+  onBack: () => void;
+  onAddObs: (estId: string, obs: Obs) => void;
   nombreUsuario: string;
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -159,8 +161,8 @@ function BadgeCondicion({ tipo }: { tipo:string|null|undefined }) {
 /* ─── LISTA ESTUDIANTES ──────────────────────────────────────────── */
 function ListaEstudiantes({ curso, extraObs, onSelectEst }: {
   curso: Curso;
-  extraObs:Record<number,Obs[]>;
-  onSelectEst:(e:Estudiante)=>void;
+  extraObs: Record<string, Obs[]>;  // ← string
+  onSelectEst: (e: Estudiante) => void;
 }) {
   const totalObs = curso.estudiantes.reduce((s,e) => s+e.obs.length+(extraObs[e.id]?.length||0), 0);
   const enRiesgo = curso.estudiantes.filter(e => e.riesgo==="rojo").length;
@@ -223,31 +225,70 @@ export default function ObservadorDocente() {
   const navigate = useNavigate();
   const { agregarObservacion } = useGESTA();
   const [navActivo, setNavActivo] = useState("observador");
-  const [cursoId,   setCursoId]   = useState<number|null>(null);
+  const [cursoId, setCursoId] = useState<string | null>(null);
   const [estudianteSelec, setEstudianteSelec] = useState<Estudiante|null>(null);
   const [showForm, setShowForm]   = useState(false);
   const [form, setForm]           = useState({ estId:"", tipo:"Academica", desc:"" });
-  const [extraObs, setExtraObs]   = useState<Record<number,Obs[]>>({});
+  const [extraObs, setExtraObs] = useState<Record<string, Obs[]>>({});
   const [isMobile, setIsMobile] = useState(false);
 
   // TODO: Reemplazar con datos del contexto de autenticación / login response
-  const nombreUsuario = ""; // TODO: Reemplazar con authContext.usuario.nombre cuando el backend esté conectado
-  const subUsuario = "";    // TODO: Reemplazar con authContext.usuario.sub cuando el backend esté conectado
+  const { nombreCompleto } = useAuth();
+  const nombreUsuario = nombreCompleto() || "Docente";
+  const subUsuario = "Docente";
 
   // ── Estado dinámico para datos de cursos ──
   // TODO: Reemplazar con cursosAPI.getCursosDocente() cuando el backend esté conectado
   const [cursos, setCursos] = useState<Curso[]>([]);
 
   useEffect(() => {
-    // TODO: Reemplazar con cursosAPI.getCursosDocente() cuando el backend esté conectado
-    try {
-      // const data = await cursosAPI.getCursosDocente();
-      // setCursos(data);
-      console.warn("ObservadorDocente: cursosAPI.getCursosDocente() no implementado — usando estado vacío");
-    } catch (err) {
-      console.warn("ObservadorDocente: Error cargando cursos", err);
+    async function fetchCursos() {
+      try {
+        const cursosData = await docenteAPI.getCursos();
+        // getCursos ya devuelve { id, nombre, estudiantes[] }
+        // pero los estudiantes no tienen obs/asistencia/promedio — los inicializamos vacíos
+        const cursosFormateados: Curso[] = cursosData.map((c: any) => ({
+          id: c.id,
+          nombre: c.nombre,
+          estudiantes: (c.estudiantes || []).map((e: any) => ({
+            id: e.id,
+            nombre: e.nombre,
+            riesgo: "verde",
+            asistencia: 0,
+            promedio: 0,
+            obs: [],
+            condicion: e.condicion || null,
+          })),
+        }));
+        setCursos(cursosFormateados);
+      } catch (err) {
+        console.warn("ObservadorDocente: Error cargando cursos", err);
+      }
     }
+    fetchCursos();
   }, []);
+
+  useEffect(() => {
+    if (!cursoId) return;
+    observacionesAPI.getObservacionesCurso(cursoId)
+      .then(data => {
+        const agrupadas: Record<string, Obs[]> = {};
+        for (const o of data) {
+          // ✅ Usa el ID directo en lugar de buscar por nombre
+          const id = o.estudiante_id;
+          if (!id) continue;
+          if (!agrupadas[id]) agrupadas[id] = [];
+          agrupadas[id].push({
+            tipo: o.tipo,
+            desc: o.descripcion,
+            fecha: o.fecha,
+            autor: o.autor || "Docente",
+          });
+        }
+        setExtraObs(agrupadas);
+      })
+      .catch(err => console.warn("Error cargando observaciones:", err));
+  }, [cursoId, cursos]);
 
   useEffect(() => {
     const breakpoint = 1280;
@@ -263,27 +304,25 @@ export default function ObservadorDocente() {
   const curso = cursoId !== null ? cursos.find(c => c.id === cursoId) ?? null : null;
   const ir    = (ruta:string, id?:string) => { if(id) setNavActivo(id); navigate(`/dashboard/${ruta}`); };
 
-  function addObs(estId:number, obs:Obs) {
-    // Agregar a la lista local para actualización inmediata
-    setExtraObs(prev => ({ ...prev, [estId]:[...(prev[estId]||[]), obs] }));
-
-    // Agregar al contexto global GESTA
-    // TODO: Reemplazar con observacionesAPI.crearObservacion() para persistir en backend
-    agregarObservacion({
-      estudianteId: estId,
-      tipo: obs.tipo,
-      desc: obs.desc,
-      fecha: obs.fecha,
-      autor: obs.autor,
-      rol: "Docente",
-    });
+  async function addObs(estId: string, obs: Obs) {
+    setExtraObs(prev => ({ ...prev, [estId]: [...(prev[estId] || []), obs] }));
+    try {
+      await observacionesAPI.crearObservacion({
+        estudianteId: estId,
+        tipo: obs.tipo,
+        desc: obs.desc,
+        autor: nombreUsuario,
+        rol: "Docente",
+      });
+    } catch (err) {
+      console.warn("Error guardando observación:", err);
+    }
   }
 
   function guardarForm() {
     if (!form.estId || !form.desc.trim()) return;
-    // TODO: Reemplazar con observacionesAPI.crearObservacion() para persistir en backend
-    addObs(parseInt(form.estId), { tipo:form.tipo, desc:form.desc.trim(), fecha:"Ahora", autor:nombreUsuario });
-    setForm({ estId:"", tipo:"Academica", desc:"" });
+    addObs(form.estId, { tipo: form.tipo, desc: form.desc.trim(), fecha: "Ahora", autor: nombreUsuario });
+    setForm({ estId: "", tipo: "Academica", desc: "" });
     setShowForm(false);
   }
 
@@ -312,7 +351,7 @@ export default function ObservadorDocente() {
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <span style={{ fontSize:13, fontWeight:600, color:C.gray700 }}>Curso:</span>
-                  <select style={{ ...S.select, height:32, fontSize:13 }} value={cursoId ?? ""} onChange={e => { setCursoId(e.target.value === "" ? null : parseInt(e.target.value)); setEstudianteSelec(null); setShowForm(false); }}>
+                  <select style={{ ...S.select, height:32, fontSize:13 }} value={cursoId ?? ""} onChange={e => { setCursoId(e.target.value === "" ? null : e.target.value); setEstudianteSelec(null); setShowForm(false); }}>
                     <option value="">Selecciona un curso...</option>
                     {cursos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>

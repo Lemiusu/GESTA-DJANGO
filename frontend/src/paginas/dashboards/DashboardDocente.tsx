@@ -172,20 +172,18 @@ export default function DashboardDocente() {
   const [navActivo, setNavActivo] = useState("inicio");
   const [cursosAbiertos, setCursosAbiertos] = useState<Record<number, boolean>>({});
   const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const breakpoint = 1280;
 
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < breakpoint);
-    };
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1280);
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // ✅ Nombre real desde AuthContext
   const { nombreCompleto } = useAuth();
   const userName = nombreCompleto() || "Docente";
-  const userRole = "Docente · Mat. 6-9";
+  const userRole = "";
 
   const [cursos, setCursos] = useState<Curso[]>([]);
   const [estudiantesPorCurso, setEstudiantesPorCurso] = useState<Record<number, EstudianteCurso[]>>({});
@@ -194,47 +192,48 @@ export default function DashboardDocente() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const data = await docenteAPI.getCursos();
-        const cursosData = (data || []).map((curso: any) => ({
-          id: curso.id,
-          nombre: curso.nombre,
-          estudiantes: curso.estudiantes?.length ?? 0,
-          presentes: curso.estudiantes?.length ?? 0,
-          promedio: 0,
-          enRiesgo: curso.estudiantes?.filter((e: any) => !!e.condicion).length ?? 0,
-          estado: curso.estudiantes?.filter((e: any) => !!e.condicion).length > 2 ? "rojo" : "verde",
+        // ✅ getDashboard ya devuelve todo lo necesario: asignaturas con promedio,
+        // asistencia y estudiantes con riesgo real
+        const data = await docenteAPI.getDashboard();
+
+        const cursosData = (data.asignaturas || []).map((a: any) => ({
+          id: a.id,
+          nombre: a.nombre,
+          estudiantes: a.num_estudiantes ?? 0,
+          // presentes se calcula desde porcentaje_asistencia_hoy
+          presentes: a.porcentaje_asistencia_hoy != null
+            ? Math.round((a.porcentaje_asistencia_hoy / 100) * (a.num_estudiantes ?? 0))
+            : 0,
+          promedio: a.promedio ?? 0,
+          enRiesgo: a.estudiantes_en_riesgo ?? 0,
+          estado: (a.estudiantes_en_riesgo ?? 0) > 3 ? "rojo"
+                : (a.estudiantes_en_riesgo ?? 0) > 1 ? "amarillo"
+                : "verde",
         }));
         setCursos(cursosData);
+
+        // ✅ Estudiantes con datos reales de promedio, asistencia y riesgo
+        const porCurso: Record<number, EstudianteCurso[]> = {};
+        for (const a of data.asignaturas || []) {
+          porCurso[a.id] = (a.estudiantes || []).map((e: any) => ({
+            id: e.id,
+            nombre: e.nombre,
+            promedio: e.promedio ?? 0,
+            asistencia: e.porcentaje_asistencia ?? 0,
+            obs: e.num_observaciones ?? 0,
+            riesgo: mapRiesgo(e.riesgo),
+          }));
+        }
+        setEstudiantesPorCurso(porCurso);
+
+        // alertas desde resumen
+        setAlertasCount(data.resumen?.estudiantes_en_riesgo ?? 0);
       } catch (err) {
-        console.warn("DashboardDocente: No se pudieron cargar los cursos desde la API", err);
+        console.warn("DashboardDocente: No se pudo cargar el dashboard", err);
       }
     }
     fetchData();
   }, []);
-
-  useEffect(() => {
-    async function fetchEstudiantes() {
-      for (const curso of cursos) {
-        try {
-          const data = await docenteAPI.getEstudiantesPorCurso(curso.id);
-          setEstudiantesPorCurso(prev => ({
-            ...prev,
-            [curso.id]: (data as any[]).map(e => ({
-              id: e.id,
-              nombre: e.nombre,
-              promedio: 0,
-              asistencia: 100,
-              obs: 0,
-              riesgo: mapRiesgo(e.riesgo),
-            })),
-          }));
-        } catch (err) {
-          console.warn(`DashboardDocente: No se pudieron cargar los estudiantes del curso ${curso.id}`, err);
-        }
-      }
-    }
-    if (cursos.length > 0) fetchEstudiantes();
-  }, [cursos]);
 
   useEffect(() => {
     async function fetchDashboard() {

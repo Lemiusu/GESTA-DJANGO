@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback } from "react";
 import type { ReactNode } from "react";
+import { useAuth } from "./AuthContext";
 import {
   observacionesAPI,
   mensajesAPI,
@@ -12,7 +13,7 @@ export type NivelRiesgo = "verde" | "amarillo" | "rojo";
 
 export interface Observacion {
   id: number;
-  estudianteId: number;
+  estudianteId: string;  // ← string en lugar de number
   tipo: string;
   desc: string;
   fecha: string;
@@ -46,7 +47,7 @@ export interface Alerta {
 }
 
 export interface CondicionEstudiante {
-  estudianteId: number;
+  estudianteId: string;
   condicionInclusion?: string;
   esRepitente: boolean;
   descripcionRepitente?: string;
@@ -68,18 +69,23 @@ export interface NotasMateria {
 
 export interface AsistenciaRegistro {
   fecha: string;
-  estudianteId: number;
+  estudianteId: string;
   estado: "presente" | "ausente" | "justificado";
   motivo?: string;
 }
 
 /* ─── CONTEXT TYPE ───────────────────────────────────────────────── */
 interface GESTAContextType {
+  // Identidad del usuario actual
+  perfilId: string | null;
+  nombreCompleto: string;
+  rol: string | null;
+
   // Observaciones
   observaciones: Observacion[];
   loadingObservaciones: boolean;
   agregarObservacion: (obs: Omit<Observacion, "id">) => Promise<void>;
-  getObservacionesEstudiante: (estudianteId: number) => Observacion[];
+  getObservacionesEstudiante: (estudianteId: string) => Observacion[];
 
   // Mensajes
   mensajes: Mensaje[];
@@ -99,35 +105,43 @@ interface GESTAContextType {
   // Condiciones especiales
   condiciones: CondicionEstudiante[];
   setCondicionEstudiante: (est: CondicionEstudiante) => Promise<void>;
-  getCondicion: (estudianteId: number) => CondicionEstudiante | undefined;
+  getCondicion: (estudianteId: string) => CondicionEstudiante | undefined;
 
   // Asistencia
   asistencia: AsistenciaRegistro[];
   loadingAsistencia: boolean;
-  getAsistenciaEstudiante: (estudianteId: number) => AsistenciaRegistro[];
+  getAsistenciaEstudiante: (estudianteId: string) => AsistenciaRegistro[];
 
   // Carga inicial
-  cargarDatosIniciales: (rol: string) => Promise<void>;
+  cargarDatosIniciales: () => Promise<void>;
 }
 
 /* ─── CONTEXT ────────────────────────────────────────────────────── */
 const GESTAContext = createContext<GESTAContextType | null>(null);
 
 export function GESTAProvider({ children }: { children: ReactNode }) {
+  // Lee el usuario autenticado directamente desde AuthContext
+  const { user, nombreCompleto: getNombreCompleto } = useAuth();
+
+  const perfilId = user?.perfil_id ?? null;
+  const rol = user?.rol ?? null;
+  const nombreCompleto = getNombreCompleto();
+
   const [observaciones, setObservaciones] = useState<Observacion[]>([]);
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [condiciones, setCondiciones] = useState<CondicionEstudiante[]>([]);
   const [asistencia] = useState<AsistenciaRegistro[]>([]);
 
-  // Estados de carga
   const [loadingObservaciones, setLoadingObservaciones] = useState(false);
   const [loadingMensajes, setLoadingMensajes] = useState(false);
   const [loadingAlertas, setLoadingAlertas] = useState(false);
   const [loadingAsistencia] = useState(false);
 
-  /* ─── Carga inicial de datos desde el backend ─── */
-  const cargarDatosIniciales = useCallback(async (rol: string) => {
+  /* ─── Carga inicial — ya no necesita recibir el rol como parámetro ─── */
+  const cargarDatosIniciales = useCallback(async () => {
+    if (!rol) return;
+
     try {
       setLoadingMensajes(true);
       const msgs = await mensajesAPI.getMensajesPara(rol);
@@ -149,7 +163,7 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingAlertas(false);
     }
-  }, []);
+  }, [rol]);
 
   /* Observaciones */
   const agregarObservacion = useCallback(async (obs: Omit<Observacion, "id">) => {
@@ -165,7 +179,7 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  function getObservacionesEstudiante(estudianteId: number) {
+  function getObservacionesEstudiante(estudianteId: string) {
     return observaciones.filter(o => o.estudianteId === estudianteId);
   }
 
@@ -245,17 +259,20 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  function getCondicion(estudianteId: number) {
+  function getCondicion(estudianteId: string) {
     return condiciones.find(c => c.estudianteId === estudianteId);
   }
 
   /* Asistencia */
-  function getAsistenciaEstudiante(estudianteId: number) {
+  function getAsistenciaEstudiante(estudianteId: string) {
     return asistencia.filter(a => a.estudianteId === estudianteId);
   }
 
   return (
     <GESTAContext.Provider value={{
+      perfilId,
+      nombreCompleto,
+      rol,
       observaciones, loadingObservaciones, agregarObservacion, getObservacionesEstudiante,
       mensajes, loadingMensajes, agregarMensaje, marcarMensajeLeido, getMensajesPara, getMensajesNoLeidos,
       alertas, loadingAlertas, agregarAlerta, resolverAlerta, getAlertasActivas,
