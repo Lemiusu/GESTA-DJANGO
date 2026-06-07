@@ -167,8 +167,8 @@ function PanelNotas({ estudiante, isMobile }: { estudiante: EstudiantePerfil | n
                 <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: C.gray400, flex: 1, textTransform: "uppercase" }}>Actividad</p>
                 <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: C.gray400, textTransform: "uppercase" }}>Nota</p>
               </div>
-              {m.notas.map((n, ni) => (
-                <div key={ni} style={{ display: "flex", padding: "8px 16px", borderBottom: ni < m.notas.length - 1 ? `1px solid ${C.gray100}` : "none" }}>
+              {(m.notas || []).map((n, ni) => (
+                <div key={ni} style={{ display: "flex", padding: "8px 16px", borderBottom: ni < (m.notas || []).length - 1 ? `1px solid ${C.gray100}` : "none" }}>
                   <span style={{ flex: 1, fontSize: 12, color: C.gray700 }}>{n.desc}</span>
                   <span style={{ fontSize: 13, fontWeight: 600, color: n.valor < 3 ? C.red : C.gray800 }}>{n.valor}</span>
                 </div>
@@ -437,6 +437,10 @@ export default function DashboardEstudiante() {
           nombre: c.asignatura,
           promedio: c.promedio ?? 0,
           perdida: (c.promedio ?? 0) < 3,
+          notas: (c.notas || []).map((n: any) => ({
+            desc: `${n.nombre} (${n.porcentaje}%)`,
+            valor: n.valor,
+          })),
         })),
       }))
       .catch(err => console.warn("No se pudo cargar el perfil del estudiante:", err));

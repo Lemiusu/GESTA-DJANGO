@@ -371,9 +371,7 @@ class EstudiantePerfilSerializer(serializers.Serializer):
         if not periodo_activo:
             return []
 
-        asignaturas = Asignatura.objects.filter(
-            curso=estudiante.curso
-        )
+        asignaturas = Asignatura.objects.filter(curso=estudiante.curso)
 
         resultado = []
         for asignatura in asignaturas:
@@ -387,15 +385,32 @@ class EstudiantePerfilSerializer(serializers.Serializer):
 
             promedio = None
             if calificaciones.exists():
-                promedio = round(sum(
-                    c.valor * c.actividad_evaluativa.porcentaje / 100
+                suma_ponderada = sum(
+                    c.valor * c.actividad_evaluativa.porcentaje
                     for c in calificaciones
-                ), 2)
+                )
+                suma_porcentajes = sum(
+                    c.actividad_evaluativa.porcentaje
+                    for c in calificaciones
+                )
+                if suma_porcentajes > 0:
+                    promedio = round(suma_ponderada / suma_porcentajes, 2)
+
+            # ✅ Incluir notas individuales para mostrarlas en el frontend
+            notas = [
+                {
+                    'nombre': c.actividad_evaluativa.nombre,
+                    'porcentaje': float(c.actividad_evaluativa.porcentaje),
+                    'valor': float(c.valor),
+                }
+                for c in calificaciones
+            ]
 
             resultado.append({
-                'asignatura_id': asignatura.id,
+                'asignatura_id': str(asignatura.id),
                 'asignatura': asignatura.nombre,
-                'promedio': promedio,
+                'promedio': float(promedio) if promedio is not None else None,
+                'notas': notas,
             })
         return resultado
 
