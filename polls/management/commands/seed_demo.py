@@ -48,8 +48,8 @@ class Command(BaseCommand):
         curso601 = Curso.objects.create(grado=grado6, docente_titular=docente, nombre="601")
         curso701 = Curso.objects.create(grado=grado7, docente_titular=docente, nombre="701")
 
-        asig601 = Asignatura.objects.create(curso=curso601, docente=docente, nombre="Matemáticas")
-        Asignatura.objects.create(curso=curso701, docente=docente, nombre="Matemáticas")
+        asig601 = Asignatura.objects.create(curso=curso601, docente=docente, nombre="Matemáticas 601")
+        Asignatura.objects.create(curso=curso701, docente=docente, nombre="Matemáticas 701")
 
         estudiantes_data = [
             ("est.sofia", "Sofía", "Martínez", curso601, "bajo"),
