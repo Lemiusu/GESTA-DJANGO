@@ -63,6 +63,7 @@ const GRADO_PREFIJO: Record<string, string> = {
 
 /* ─── SUBCOMPONENTES ─────────────────────────────────────────────── */
 function BarraDistribucion({ verde, amarillo, rojo, total }: { verde: number; amarillo: number; rojo: number; total: number }) {
+  if (total === 0) return <div style={{ display: "flex", height: 10, borderRadius: 6, overflow: "hidden", width: "100%", background: C.gray200 }} />;
   return (
     <div style={{ display: "flex", height: 10, borderRadius: 6, overflow: "hidden", width: "100%", gap: 1 }}>
       <div style={{ width: `${Math.round((verde / total) * 100)}%`, background: "#16a34a" }} />
@@ -105,9 +106,9 @@ function ContenidoEstadoGrados({ isMobile, gradosStats, estudiantesData }: { isM
         {gradosStats.map(g => <option key={g.grado}>{g.grado}</option>)}
       </select>
       {filtrado.map((g, i) => {
-        const pV = Math.round((g.verde / g.total) * 100);
-        const pA = Math.round((g.amarillo / g.total) * 100);
-        const pR = Math.round((g.rojo / g.total) * 100);
+                const pV = g.total > 0 ? Math.round((g.verde / g.total) * 100) : 0;
+        const pA = g.total > 0 ? Math.round((g.amarillo / g.total) * 100) : 0;
+        const pR = g.total > 0 ? Math.round((g.rojo / g.total) * 100) : 0;
         const abierto = detalleGrado === g.grado;
         const estudiantes = getEstudiantesGrado(g.grado);
         return (
@@ -160,9 +161,6 @@ function ContenidoEstadoGrados({ isMobile, gradosStats, estudiantesData }: { isM
                       {grupo.map((est, j) => (
                         <div key={est.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: j < grupo.length - 1 ? `1px solid ${C.gray100}` : "none", background: C.white }}>
                           <span style={{ fontSize: 12, color: C.gray800, fontWeight: 500 }}>{est.nombre}</span>
-                          <button onClick={() => irAPerfil(est.id)} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, border: `1px solid ${C.blue}`, background: C.blueLight, color: C.blue, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
-                            Ver perfil →
-                          </button>
                         </div>
                       ))}
                     </div>
@@ -205,9 +203,9 @@ function ContenidoEstadoGrados({ isMobile, gradosStats, estudiantesData }: { isM
         </thead>
         <tbody>
           {filtrado.map((g, i) => {
-            const pV = Math.round((g.verde / g.total) * 100);
-            const pA = Math.round((g.amarillo / g.total) * 100);
-            const pR = Math.round((g.rojo / g.total) * 100);
+            const pV = g.total > 0 ? Math.round((g.verde / g.total) * 100) : 0;
+            const pA = g.total > 0 ? Math.round((g.amarillo / g.total) * 100) : 0;
+            const pR = g.total > 0 ? Math.round((g.rojo / g.total) * 100) : 0;
             const abierto = detalleGrado === g.grado;
             const estudiantes = getEstudiantesGrado(g.grado);
             return (
@@ -272,9 +270,6 @@ function ContenidoEstadoGrados({ isMobile, gradosStats, estudiantesData }: { isM
                                 {grupo.map((est, j) => (
                                   <div key={est.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 12px", background: C.white, borderBottom: j < grupo.length - 1 ? `1px solid ${C.gray100}` : "none" }}>
                                     <span style={{ fontSize: 12, color: C.gray800 }}>{est.nombre}</span>
-                                    <button onClick={() => irAPerfil(est.id)} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, border: `1px solid ${C.blue}`, background: C.blueLight, color: C.blue, cursor: "pointer", fontFamily: "inherit", fontWeight: 600, flexShrink: 0 }}>
-                                      Ver perfil →
-                                    </button>
                                   </div>
                                 ))}
                               </div>
@@ -305,7 +300,7 @@ function ContenidoAsistencia({ isMobile, asistenciaGrados, asistenciaEstudiantes
   return (
     <div style={{ padding: isMobile ? "8px 14px" : "8px 16px" }}>
       {asistenciaGrados.map((g, i) => {
-        const pct = Math.round((g.presentes / g.total) * 100);
+        const pct = g.total > 0 ? Math.round((g.presentes / g.total) * 100) : 0;
         const nivel = pct >= 90 ? "verde" : pct >= 80 ? "amarillo" : "rojo";
         const barColor = nivel === "verde" ? C.green : nivel === "amarillo" ? "#d97706" : C.red;
         const abierto = detalleGrado === g.grado;
@@ -539,14 +534,14 @@ export default function DashboardCoordinador() {
       try {
         const data = await coordinadorAPI.getDashboard();
         const pct = data?.resumen?.porcentaje_asistencia_hoy;
-        if (pct !== undefined) setAsistenciaPromedio(`${pct}%`);
+        const valor = (pct !== undefined && pct !== null && !isNaN(pct)) ? pct : 0;
+        setAsistenciaPromedio(`${valor}%`);
       } catch (err) {
         console.warn("DashboardCoordinador: No se pudo cargar el dashboard desde la API", err);
       }
     }
     fetchDashboard();
   }, []);
-
   const alertasActivas = getAlertasActivas().length;
   const noLeidos = getMensajesNoLeidos("coordinador");
   const totalRojo = gradosStats.reduce((s, g) => s + g.rojo, 0);
@@ -590,18 +585,6 @@ export default function DashboardCoordinador() {
               <p style={{ margin: "2px 0 0", fontSize: 12, color: C.gray500 }}>Colegio Integrado de Fontibón IBEP · Jornada mañana · Periodo 2</p>
             </div>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {noLeidos > 0 && (
-              <button onClick={() => ir("mensajes-coordinador", "mensajes")} style={{ background: C.blueLight, color: C.blueText, fontSize: isMobile ? 10 : 12, padding: isMobile ? "3px 8px" : "4px 12px", borderRadius: 12, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: "inherit" }}>
-                {noLeidos} mensajes
-              </button>
-            )}
-            {alertasActivas > 0 && (
-              <span style={{ background: C.redLight, color: C.red, fontSize: isMobile ? 11 : 12, padding: isMobile ? "3px 8px" : "4px 12px", borderRadius: 12, fontWeight: 600 }}>
-                {alertasActivas} alertas activas
-              </span>
-            )}
-          </div>
         </header>
 
         <main style={{ ...S.content, padding: isMobile ? "12px" : "20px 24px" }}>
@@ -642,7 +625,7 @@ export default function DashboardCoordinador() {
             items={BOTTOM_NAV_COORDINADOR}
             navActivo={navActivo}
             onNav={ir}
-            badges={{ mensajes: noLeidos, alertas: alertasActivas }}
+            badges={{alertas: alertasActivas }}
           />
         )}
       </div>

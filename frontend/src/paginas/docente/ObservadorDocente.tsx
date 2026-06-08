@@ -98,8 +98,7 @@ function DetalleEstudiante({ estudiante, cursoNombre, extraObs, onBack, onAddObs
   function guardar() {
     if (!form.desc.trim()) return;
     const esPositiva = form.tipo === "logro";
-    onAddObs(estudiante.id, { id: Date.now().toString(), tipo: form.tipo, descripcion: form.desc.trim(), fecha: "Ahora", autor: nombreUsuario, es_positiva: false });
-    setForm({ estId: "", tipo: "academica", desc: "" });
+	onAddObs(estudiante.id, { id: Date.now().toString(), tipo: form.tipo, descripcion: form.desc.trim(), fecha: "Ahora", autor: nombreUsuario, es_positiva: form.tipo === "logro" });    setForm({ estId: "", tipo: "academica", desc: "" });
     setShowForm(false);
   }
 
@@ -355,10 +354,7 @@ export default function ObservadorDocente() {
             <p style={{ margin:0, fontSize:16, fontWeight:700, color:C.gray900 }}>Observador estudiantil</p>
             <p style={{ margin:"2px 0 0", fontSize:12, color:C.gray500 }}>Colegio Integrado de Fontibón IBEP · Jornada mañana · Periodo 2</p>
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <span style={{ background:C.blueLight, color:C.blueText, fontSize:12, padding:"4px 12px", borderRadius:12, fontWeight:600 }}>0 alertas activas</span>
-            <select style={S.select}><option>Periodo 2 · 2025</option><option>Periodo 1 · 2025</option></select>
-          </div>
+		  <select style={S.select}><option>Periodo 2 · 2025</option><option>Periodo 1 · 2025</option></select>
         </header>
 
         <main style={S.content}>

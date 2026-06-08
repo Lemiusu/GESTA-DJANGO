@@ -63,7 +63,9 @@
     -moz-osx-font-smoothing: grayscale;
   }
 }
-
+html {
+  zoom: 1.5;
+}
 /* Scrollbar personalizada */
 ::-webkit-scrollbar {
   width: 6px;

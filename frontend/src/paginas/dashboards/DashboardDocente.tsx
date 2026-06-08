@@ -191,7 +191,6 @@ export default function DashboardDocente() {
 
   const [cursos, setCursos] = useState<Curso[]>([]);
   const [estudiantesPorCurso, setEstudiantesPorCurso] = useState<Record<string, EstudianteCurso[]>>({});
-  const [alertasCount, setAlertasCount] = useState(0);
 
   useEffect(() => {
     async function fetchData() {
@@ -229,9 +228,6 @@ export default function DashboardDocente() {
           }));
         }
         setEstudiantesPorCurso(porCurso);
-
-        // alertas desde resumen
-        setAlertasCount(data.resumen?.estudiantes_en_riesgo ?? 0);
       } catch (err) {
         console.warn("DashboardDocente: No se pudo cargar el dashboard", err);
       }
@@ -281,11 +277,6 @@ export default function DashboardDocente() {
               <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.gray900 }}>Panel del docente</p>
               <p style={{ margin: "2px 0 0", fontSize: 12, color: C.gray500 }}>Colegio Integrado de Fontibón IBEP · Jornada mañana · Periodo 2</p>
             </div>
-          )}
-          {alertasCount > 0 && (
-            <span style={{ background: C.blueLight, color: C.blueText, fontSize: isMobile ? 11 : 12, padding: isMobile ? "3px 8px" : "4px 12px", borderRadius: 12, fontWeight: 600 }}>
-              {alertasCount} alertas
-            </span>
           )}
         </header>
 

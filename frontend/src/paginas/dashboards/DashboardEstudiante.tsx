@@ -401,7 +401,6 @@ function PanelMensajes({ isMobile }: { isMobile: boolean }) {
 /* ─── COMPONENTE PRINCIPAL ────────────────────────────────────── */
 export default function DashboardEstudiante() {
   const navigate = useNavigate();
-  const { getMensajesNoLeidos } = useGESTA();
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const breakpoint = 1280;
@@ -414,7 +413,6 @@ export default function DashboardEstudiante() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
   const [navActivo, setNavActivo] = useState("inicio");
-  const noLeidos = getMensajesNoLeidos("estudiante");
 
   const ir = (ruta: string, id: string) => { setNavActivo(id); };
 

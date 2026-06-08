@@ -239,7 +239,7 @@ class EstudiantesListaSerializer(serializers.Serializer):
         for e in estudiantes:
             porcentaje_asistencia = (
                 round((e.dias_presentes / e.total_dias) * 100, 1)
-                if e.total_dias > 0 else None
+                if e.total_dias > 0 else 0
             )
             resultado.append({
                 'id': e.id,
@@ -277,7 +277,7 @@ class EstudiantePerfilSerializer(serializers.Serializer):
 
         porcentaje_asistencia = (
             round((e.dias_presentes / e.total_dias) * 100, 1)
-            if e.total_dias > 0 else None
+            if e.total_dias > 0 else 0
         )
 
         return {
@@ -1081,7 +1081,7 @@ class AsistenciaHistorialSerializer(serializers.Serializer):
                     'num_ausentes': ausentes,
                     'porcentaje_asistencia': (
                         round((presentes / total) * 100, 1)
-                        if total > 0 else None
+                        if total > 0 else 0
                     ),
                 })
 

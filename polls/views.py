@@ -703,8 +703,7 @@ class MensajesNoLeidosView(APIView):
         rol = request.query_params.get('rol')
         if not rol:
             return Response({'total': 0})
-        usuarios = Usuario.objects.filter(rol=rol)
-        total = DestinatarioMensaje.objects.filter(destinatario__in=usuarios, leido=False).count()
+        total = DestinatarioMensaje.objects.filter(destinatario=request.user, leido=False).count()
         return Response({'total': total})
 
 

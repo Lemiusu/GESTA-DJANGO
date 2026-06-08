@@ -452,14 +452,9 @@ export default function ObservadorCoordinador() {
               <p style={{ margin: "2px 0 0", fontSize: 12, color: C.gray500 }}>Colegio Integrado de Fontibón IBEP · Jornada mañana · Periodo 2</p>
             </div>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ background: C.redLight, color: C.red, fontSize: isMobile ? 11 : 12, padding: isMobile ? "3px 8px" : "4px 12px", borderRadius: 12, fontWeight: 600 }}>
-              0 alertas activas
-            </span>
-            {!isMobile && (
-              <select style={S.select}><option>Periodo 2 · 2025</option><option>Periodo 1 · 2025</option></select>
-            )}
-          </div>
+          {!isMobile && (
+            <select style={S.select}><option>Periodo 2 · 2025</option><option>Periodo 1 · 2025</option></select>
+          )}
         </header>
 
         <main style={{ ...S.content, padding: isMobile ? "12px" : "18px 22px" }}>

@@ -546,9 +546,6 @@ export default function RegistroAsistencia() {
               <p style={{ margin: "2px 0 0", fontSize: 12, color: C.gray500 }}>Colegio Integrado de Fontibón IBEP · Jornada mañana · Periodo 2</p>
             </div>
           )}
-          <span style={{ background: C.blueLight, color: C.blueText, fontSize: isMobile ? 11 : 12, padding: isMobile ? "3px 8px" : "4px 12px", borderRadius: 12, fontWeight: 600 }}>
-            3 alertas activas
-          </span>
         </header>
 
         {/* Content */}

@@ -529,7 +529,7 @@ export default function Mensajes() {
       // Recargar datos para que aparezcan las alertas
       await cargarDatosIniciales(rol);
       setToast(`Alerta enviada a ${mensajes.length} destinatario(s)`);
-      setFiltro("alerta");
+      setFiltro("todos");
     } catch (error) {
       console.error("Error enviando alerta:", error);
       setToast("Error al enviar la alerta. Intenta de nuevo.");

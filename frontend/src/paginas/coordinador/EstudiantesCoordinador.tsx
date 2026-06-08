@@ -546,18 +546,11 @@ export default function EstudiantesCoordinador() {
               <p style={{ margin:"2px 0 0", fontSize:12, color:C.gray500 }}>Colegio Integrado de Fontibon IBEP · Todos los grados · Periodo 2</p>
             </div>
           )}
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            {noLeidos>0 && (
-              <button onClick={() => ir("mensajes-coordinador","mensajes")} style={{ background:C.blueLight, color:C.blueText, fontSize:isMobile?10:12, padding:isMobile?"3px 8px":"4px 12px", borderRadius:12, fontWeight:600, border:"none", cursor:"pointer", fontFamily:"inherit" }}>
-                {noLeidos} mensajes
-              </button>
-            )}
-            {alertasActivas>0 && (
-              <span style={{ background:C.redLight, color:C.red, fontSize:isMobile?11:12, padding:isMobile?"3px 8px":"4px 12px", borderRadius:12, fontWeight:600 }}>
-                {alertasActivas} alertas
-              </span>
-            )}
-          </div>
+		  {noLeidos>0 && (
+            <button onClick={() => ir("mensajes-coordinador","mensajes")} style={{ background:C.blueLight, color:C.blueText, fontSize:isMobile?10:12, padding:isMobile?"3px 8px":"4px 12px", borderRadius:12, fontWeight:600, border:"none", cursor:"pointer", fontFamily:"inherit" }}>
+              {noLeidos} mensajes
+            </button>
+          )}
         </header>
 
         <main style={{ ...S.content, padding:isMobile?"12px":"20px 24px" }}>
