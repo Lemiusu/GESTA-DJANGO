@@ -356,7 +356,10 @@ export const estudiantesAPI = {
       asistencia: e.porcentaje_asistencia ?? 0,
       obs: e.observaciones_negativas ?? 0,
       riesgo: mapRiesgo(e.riesgo),
-      condicion: e.descripcion_condicion || null,
+      condicion: e.es_repitente ? 'repitente' : (e.tiene_condicion_especial ? 'inclusion' : null),
+      esRepitente: e.es_repitente || false,
+      tieneCondicionEspecial: e.tiene_condicion_especial || false,
+      descripcionCondicion: e.descripcion_condicion || '',
     }));
   },
   getPerfilEstudiante: async (estudianteId: string) => {
@@ -366,9 +369,21 @@ export const estudiantesAPI = {
     return request<any>(`/estudiantes/${estudianteId}/condicion/`);
   },
   setCondicion: async (estudianteId: string, condicion: { esRepitente: boolean; descripcionRepitente?: string; condicionInclusion?: string }) => {
+    // Mapear al formato que espera el backend Django
+    const payload: Record<string, any> = {
+      es_repitente: condicion.esRepitente,
+      tiene_condicion_especial: condicion.esRepitente || !!condicion.condicionInclusion,
+    };
+    if (condicion.esRepitente && condicion.descripcionRepitente) {
+      payload.descripcion_condicion = condicion.descripcionRepitente;
+    } else if (condicion.condicionInclusion) {
+      payload.descripcion_condicion = condicion.condicionInclusion;
+    } else if (!condicion.esRepitente && !condicion.condicionInclusion) {
+      payload.descripcion_condicion = '';
+    }
     return request<any>(`/estudiantes/${estudianteId}/condicion/`, {
       method: "PUT",
-      body: JSON.stringify(condicion),
+      body: JSON.stringify(payload),
     });
   },
   crearEstudiante: async (estudiante: { nombre: string; grado: string; condicion?: string | null }) => {

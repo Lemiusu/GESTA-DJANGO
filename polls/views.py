@@ -792,7 +792,16 @@ class EstudiantesCreateView(APIView):
         first_name = nombres[0]
         last_name = nombres[1] if len(nombres) > 1 else ''
         usuario = Usuario.objects.create(username=nombre.replace(' ', '.').lower(), first_name=first_name, last_name=last_name, rol='estudiante')
-        estudiante = Estudiante.objects.create(usuario=usuario, curso=curso, riesgo='bajo', descripcion_condicion=condicion)
+        es_repitente = condicion == 'repitente'
+        tiene_condicion_especial = condicion in ('repitente', 'inclusion')
+        estudiante = Estudiante.objects.create(
+            usuario=usuario,
+            curso=curso,
+            riesgo='bajo',
+            es_repitente=es_repitente,
+            tiene_condicion_especial=tiene_condicion_especial,
+            descripcion_condicion=condicion,
+        )
         return Response({'id': estudiante.id, 'detail': 'Estudiante creado.'}, status=status.HTTP_201_CREATED)
 
 

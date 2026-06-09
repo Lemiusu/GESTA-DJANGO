@@ -18,6 +18,9 @@ interface Estudiante {
   obs: number;
   riesgo: string;
   condicion: string | null;
+  esRepitente: boolean;
+  tieneCondicionEspecial: boolean;
+  descripcionCondicion: string | null;
 }
 
 interface CalificacionMateria {
@@ -301,7 +304,7 @@ function PerfilEstudiante({
                           }}
                           style={{ fontSize:12, padding:"6px 14px", borderRadius:7, cursor:"pointer", border:`1px solid ${C.blue}`, background:C.blue, color:C.white, fontFamily:"inherit", fontWeight:600 }}
                         >
-                          Guardar cambio
+                      {`Guardar`}
                         </button>
                       </div>
                     </div>
@@ -351,7 +354,7 @@ function PerfilEstudiante({
 /* ─── COMPONENTE PRINCIPAL ────────────────────────────────────── */
 export default function EstudiantesCoordinador() {
   const navigate = useNavigate();
-  const { getAlertasActivas, getMensajesNoLeidos } = useGESTA();
+  const { getAlertasActivas, getMensajesNoLeidos, setCondicionEstudiante } = useGESTA();
 
   /* ── Responsive ── */
   const [isMobile, setIsMobile] = useState(false);
@@ -375,6 +378,17 @@ export default function EstudiantesCoordinador() {
       .then(data => {
         setEstudiantes(data);
         setGrados([...new Set(data.map((e: Estudiante) => e.grado).filter(Boolean))] as string[]);
+        // Cargar condiciones de los estudiantes al contexto
+        data.forEach((e: any) => {
+          if (e.esRepitente || e.tieneCondicionEspecial) {
+            setCondicionEstudiante({
+              estudianteId: String(e.id),
+              esRepitente: e.esRepitente || false,
+              descripcionRepitente: e.esRepitente ? (e.descripcionCondicion || '') : undefined,
+              condicionInclusion: e.tieneCondicionEspecial && !e.esRepitente ? (e.descripcionCondicion || '') : undefined,
+            });
+          }
+        });
       })
       .catch(error => console.warn("Error cargando estudiantes:", error));
   }, []);
@@ -391,11 +405,11 @@ export default function EstudiantesCoordinador() {
   const [filtroCond,   setFiltroCond]   = useState("Todos");
   const [ordenCol,     setOrdenCol]     = useState<OrdenCol>("riesgo");
   const [ordenDir,     setOrdenDir]     = useState<OrdenDir>("asc");
-  const [perfilId, setPerfilId] = useState<number|null>(null);
+  const [perfilId, setPerfilId] = useState<string|null>(null);
   
   const location = useLocation();
   useEffect(() => {
-    const state = location.state as { perfilId?: number } | null;
+    const state = location.state as { perfilId?: string } | null;
     if (state?.perfilId) {
       setPerfilId(state.perfilId);
       window.history.replaceState({}, "");
@@ -409,10 +423,12 @@ export default function EstudiantesCoordinador() {
   const [nuevaCond,    setNuevaCond]    = useState<"repitente"|"inclusion"|null>(null);
   const [errNombre,    setErrNombre]    = useState(false);
 
-  const [modalCondicion, setModalCondicion] = useState(false);
-  const [condEstId,      setCondEstId]      = useState<number|null>(null);
-  const [condBusqueda,   setCondBusqueda]   = useState("");
-  const [condNueva,      setCondNueva]      = useState<"repitente"|"inclusion"|null>(null);
+  const [modalCondicion,  setModalCondicion]  = useState(false);
+  const [condEstId,       setCondEstId]       = useState<string|null>(null);
+  const [condBusqueda,    setCondBusqueda]    = useState("");
+  const [condNueva,       setCondNueva]       = useState<"repitente"|"inclusion"|null>(null);
+  const [condDescripcion, setCondDescripcion] = useState("");
+  const [condGuardando,   setCondGuardando]   = useState(false);
 
   const alertasActivas = getAlertasActivas().length;
   const noLeidos       = getMensajesNoLeidos("coordinador");
@@ -432,17 +448,44 @@ export default function EstudiantesCoordinador() {
     setCondEstId(null);
     setCondBusqueda("");
     setCondNueva(null);
+    setCondDescripcion("");
     setModalCondicion(true);
   };
 
   /* ── Editar condicion de estudiante ── */
-  const guardarCondicion = () => {
+  const guardarCondicion = async () => {
     if (condEstId === null) return;
-    // TODO: Reemplazar con estudiantesAPI.setCondicion() para actualizar en backend
-    setEstudiantes(prev =>
-      prev.map(e => e.id === condEstId ? { ...e, condicion: condNueva } : e)
-    );
-    setModalCondicion(false);
+    setCondGuardando(true);
+    try {
+      const esRepitente = condNueva === "repitente";
+      const esInclusion = condNueva === "inclusion";
+      const desc = condDescripcion.trim();
+
+      // setCondicionEstudiante ya llama al API internamente
+      await setCondicionEstudiante({
+        estudianteId: String(condEstId),
+        esRepitente,
+        descripcionRepitente: esRepitente && desc ? desc : undefined,
+        condicionInclusion: esInclusion && desc ? desc : undefined,
+      });
+
+      // Actualizar lista local
+      setEstudiantes(prev =>
+        prev.map(e => String(e.id) === String(condEstId) ? {
+          ...e,
+          condicion: condNueva,
+          esRepitente,
+          tieneCondicionEspecial: esInclusion,
+          descripcionCondicion: desc || null,
+        } : e)
+      );
+      setModalCondicion(false);
+    } catch (error) {
+      console.error("Error guardando condición:", error);
+      alert("Error al guardar la condición. Intenta de nuevo.");
+    } finally {
+      setCondGuardando(false);
+    }
   };
 
   /* ── Guardar nuevo estudiante ── */
@@ -475,9 +518,9 @@ export default function EstudiantesCoordinador() {
     if (filtroGrado  !== "Todos") lista = lista.filter(e => e.grado  === filtroGrado);
     if (filtroRiesgo !== "Todos") lista = lista.filter(e => e.riesgo === filtroRiesgo.toLowerCase());
     if (filtroCond   !== "Todos") {
-      if (filtroCond==="Repitente")     lista = lista.filter(e => e.condicion==="repitente");
-      if (filtroCond==="Inclusion")     lista = lista.filter(e => e.condicion==="inclusion");
-      if (filtroCond==="Sin condicion") lista = lista.filter(e => !e.condicion);
+      if (filtroCond==="Repitente")     lista = lista.filter(e => e.esRepitente);
+      if (filtroCond==="Inclusion")     lista = lista.filter(e => e.tieneCondicionEspecial);
+      if (filtroCond==="Sin condicion") lista = lista.filter(e => !e.esRepitente && !e.tieneCondicionEspecial);
     }
 
     lista.sort((a, b) => {
@@ -512,7 +555,7 @@ export default function EstudiantesCoordinador() {
   const enRojo       = estudiantes.filter(e => e.riesgo==="rojo").length;
   const enAmarillo   = estudiantes.filter(e => e.riesgo==="amarillo").length;
   const enVerde      = estudiantes.filter(e => e.riesgo==="verde").length;
-  const conCondicion = estudiantes.filter(e => e.condicion).length;
+  const conCondicion = estudiantes.filter(e => e.esRepitente || e.tieneCondicionEspecial).length;
 
   /* ── Estudiante en perfil ── */
   const estPerfil = perfilId ? estudiantes.find(e => e.id===perfilId) : null;
@@ -705,9 +748,9 @@ export default function EstudiantesCoordinador() {
                             </td>
                             
                             <td style={S.td}>
-                              {e.condicion==="repitente" && <span style={{ fontSize:10, fontWeight:600, background:C.amberLight, color:C.amber, padding:"2px 7px", borderRadius:8 }}>Repitente</span>}
-                              {e.condicion==="inclusion"  && <span style={{ fontSize:10, fontWeight:600, background:"#dbeafe", color:"#1e40af", padding:"2px 7px", borderRadius:8 }}>Inclusión</span>}
-                              {!e.condicion              && <span style={{ fontSize:11, color:C.gray300 }}>—</span>}
+                              {e.esRepitente && <span style={{ fontSize:10, fontWeight:600, background:C.amberLight, color:C.amber, padding:"2px 7px", borderRadius:8, marginRight:4 }}>Repitente</span>}
+                              {e.tieneCondicionEspecial && <span style={{ fontSize:10, fontWeight:600, background:"#dbeafe", color:"#1e40af", padding:"2px 7px", borderRadius:8 }}>Inclusión</span>}
+                              {!e.esRepitente && !e.tieneCondicionEspecial && <span style={{ fontSize:11, color:C.gray300 }}>—</span>}
                             </td>
                             <td style={{ ...S.td, fontWeight:600, color:C.gray800 }}>{e.grado}</td>
                             <td style={{ ...S.td, fontWeight:700, color:e.promedio<3?C.red:C.green }}>{e.promedio.toFixed(1)}</td>
@@ -943,8 +986,14 @@ export default function EstudiantesCoordinador() {
                           <div
                             key={e.id}
                             onClick={() => {
-                              setCondEstId(e.id);
-                              setCondNueva(e.condicion as "repitente"|"inclusion"|null);
+                              setCondEstId(String(e.id));
+                              // Detectar condición actual correctamente
+                              const condActual: "repitente"|"inclusion"|null =
+                                e.esRepitente ? "repitente"
+                                : e.tieneCondicionEspecial ? "inclusion"
+                                : null;
+                              setCondNueva(condActual);
+                              setCondDescripcion(e.descripcionCondicion || "");
                               setCondBusqueda(e.nombre);
                             }}
                             style={{
@@ -987,7 +1036,7 @@ export default function EstudiantesCoordinador() {
           
                 {/* Chips de condición — solo visibles si hay estudiante seleccionado */}
                 {condEstId !== null && (
-                  <div style={{ marginBottom:22 }}>
+                  <div style={{ marginBottom: condNueva ? 14 : 22 }}>
                     <label style={{ display:"block", fontSize:12, fontWeight:600, color:C.gray700, marginBottom:8 }}>
                       Nueva condición
                     </label>
@@ -999,7 +1048,7 @@ export default function EstudiantesCoordinador() {
                       ] as const).map(op => (
                         <button
                           key={String(op.val)}
-                          onClick={() => setCondNueva(op.val)}
+                          onClick={() => { setCondNueva(op.val); if (!op.val) setCondDescripcion(""); }}
                           style={{
                             flex:1, padding:"8px 4px", borderRadius:8, cursor:"pointer",
                             fontFamily:"inherit", fontSize:12, fontWeight:600,
@@ -1014,6 +1063,27 @@ export default function EstudiantesCoordinador() {
                     </div>
                   </div>
                 )}
+
+                {/* Campo descripción — solo visible si hay condición seleccionada */}
+                {condEstId !== null && condNueva && (
+                  <div style={{ marginBottom:22 }}>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:C.gray700, marginBottom:5 }}>
+                      Descripción {condNueva === "repitente" ? "del repitente" : "de la condición de inclusión"}
+                    </label>
+                    <textarea
+                      value={condDescripcion}
+                      onChange={e => setCondDescripcion(e.target.value)}
+                      placeholder={condNueva === "repitente" ? "Ej: Repite por bajo rendimiento en matemáticas..." : "Ej: Discapacidad visual, requiere materiales ampliados..."}
+                      rows={3}
+                      style={{
+                        width:"100%", boxSizing:"border-box",
+                        fontSize:12, padding:"8px 10px", borderRadius:7,
+                        border:`1px solid ${C.gray200}`, background:C.white,
+                        color:C.gray700, fontFamily:"inherit", resize:"vertical", outline:"none",
+                      }}
+                    />
+                  </div>
+                )}
           
                 {/* Acciones */}
                 <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
@@ -1025,12 +1095,12 @@ export default function EstudiantesCoordinador() {
                   </button>
                   <button
                     onClick={guardarCondicion}
-                    disabled={condEstId === null}
+                    disabled={condEstId === null || condGuardando}
                     style={{
                       fontSize:13, padding:"8px 18px", borderRadius:8, cursor: condEstId===null ? "not-allowed" : "pointer",
-                      border:`1px solid ${condEstId===null ? C.gray200 : C.blue}`,
-                      background: condEstId===null ? C.gray100 : C.blue,
-                      color: condEstId===null ? C.gray400 : C.white,
+                      border:`1px solid ${condEstId===null || condGuardando ? C.gray200 : C.blue}`,
+                      background: condEstId===null || condGuardando ? C.gray100 : C.blue,
+                      color: condEstId===null || condGuardando ? C.gray400 : C.white,
                       fontFamily:"inherit", fontWeight:700,
                     }}
                   >

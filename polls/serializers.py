@@ -247,6 +247,7 @@ class EstudiantesListaSerializer(serializers.Serializer):
                 'nombre': f"{e.usuario.first_name} {e.usuario.last_name}",
                 'curso': e.curso.nombre if e.curso else None,
                 'grado': e.curso.grado.nombre if e.curso and e.curso.grado else None,
+                'es_repitente': e.es_repitente,
                 'tiene_condicion_especial': e.tiene_condicion_especial,
                 'descripcion_condicion': e.descripcion_condicion,
                 'alerta_activa': e.alertas.filter(activa=True).exists(),
@@ -287,6 +288,7 @@ class EstudiantePerfilSerializer(serializers.Serializer):
             'curso': e.curso.nombre if e.curso else None,
             'grado': e.curso.grado.nombre if e.curso and e.curso.grado else None,
             'riesgo': e.riesgo,
+            'es_repitente': e.es_repitente,
             'tiene_condicion_especial': e.tiene_condicion_especial,
             'descripcion_condicion': e.descripcion_condicion,
             'promedio': round(calcular_promedio(e), 2) if calcular_promedio(e) else None,
@@ -419,9 +421,33 @@ class EstudiantePerfilSerializer(serializers.Serializer):
 # ─── ESCRITURAS ──────────────────────────────────────────────────────────────
 
 class EstudianteCondicionSerializer(serializers.ModelSerializer):
+    es_repitente = serializers.BooleanField(required=False)
+    descripcion_repitente = serializers.CharField(source='descripcion_condicion', required=False, allow_null=True)
+
     class Meta:
         model = Estudiante
-        fields = ['tiene_condicion_especial', 'descripcion_condicion']
+        fields = ['es_repitente', 'tiene_condicion_especial', 'descripcion_condicion', 'descripcion_repitente']
+        extra_kwargs = {
+            'descripcion_condicion': {'required': False, 'allow_null': True},
+            'tiene_condicion_especial': {'required': False},
+        }
+
+    def update(self, instance, validated_data):
+        # Si mandan descripcion_repitente, usarla como descripcion_condicion
+        desc_repitente = validated_data.pop('descripcion_condicion', None)
+        if desc_repitente is not None:
+            validated_data['descripcion_condicion'] = desc_repitente
+
+        # Si es repitente, automáticamente marcar tiene_condicion_especial
+        es_repitente = validated_data.get('es_repitente', None)
+        if es_repitente is True:
+            validated_data['tiene_condicion_especial'] = True
+
+        # Si no es repitente y no tiene condición especial, limpiar descripción
+        if es_repitente is False and not validated_data.get('tiene_condicion_especial', instance.tiene_condicion_especial):
+            validated_data['descripcion_condicion'] = ''
+
+        return super().update(instance, validated_data)
 
 
 class DetalleAsistenciaEditarSerializer(serializers.ModelSerializer):

@@ -142,6 +142,7 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [condiciones, setCondiciones] = useState<CondicionEstudiante[]>([]);
+  const [loadingCondiciones, setLoadingCondiciones] = useState(false);
   const [asistencia] = useState<AsistenciaRegistro[]>([]);
 
   const [loadingObservaciones, setLoadingObservaciones] = useState(false);
@@ -174,8 +175,30 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingAlertas(false);
     }
-  }, [rol]);
 
+    try {
+      setLoadingCondiciones(true);
+      const estudiantesData = await estudiantesAPI.getEstudiantes();
+      const nuevasCondiciones: CondicionEstudiante[] = [];
+      estudiantesData.forEach(function(e: any) {
+        if (e.esRepitente || e.tieneCondicionEspecial) {
+          nuevasCondiciones.push({
+            estudianteId: String(e.id),
+            esRepitente: e.esRepitente || false,
+            descripcionRepitente: e.esRepitente ? (e.descripcionCondicion || '') : undefined,
+            condicionInclusion: e.tieneCondicionEspecial && !e.esRepitente ? (e.descripcionCondicion || '') : undefined,
+          });
+        }
+      });
+      setCondiciones(nuevasCondiciones);
+    } catch (error) {
+      console.error("Error cargando condiciones:", error);
+      setCondiciones([]);
+    } finally {
+      setLoadingCondiciones(false);
+    }
+
+  }, [rol]);
   /* Observaciones */
   const agregarObservacion = useCallback(async (obs: Omit<Observacion, "id">) => {
     try {
@@ -277,7 +300,12 @@ export function GESTAProvider({ children }: { children: ReactNode }) {
           updated[exists] = est;
           return updated;
         }
-        return [...prev, est];
+        // Solo agregar si tiene condición activa
+        if (est.esRepitente || est.condicionInclusion) {
+          return [...prev, est];
+        }
+        // Si quitó la condición, remover del arreglo
+        return prev.filter(c => c.estudianteId !== est.estudianteId);
       });
     } catch (error) {
       console.error("Error actualizando condición:", error);
