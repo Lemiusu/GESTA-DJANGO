@@ -561,7 +561,7 @@ export default function DashboardCoordinador() {
     }
     fetchAlertas();
   }, []);
-  const alertasActivas = getAlertasActivas().length;
+  const alertasActivas = alertasData.length;
   const noLeidos = getMensajesNoLeidos("coordinador");
   const totalRojo = gradosStats.reduce((s, g) => s + g.rojo, 0);
   const totalEst = gradosStats.reduce((s, g) => s + g.total, 0);
