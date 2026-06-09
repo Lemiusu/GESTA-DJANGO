@@ -417,6 +417,8 @@ export default function DashboardEstudiante() {
   const ir = (ruta: string, id: string) => { setNavActivo(id); };
 
   const { user } = useAuth();
+  const { getMensajesNoLeidos } = useGESTA();
+  const noLeidos = getMensajesNoLeidos("estudiante");
   const [estudiante, setEstudiante] = useState<EstudiantePerfil | null>(null);
 
   useEffect(() => {
