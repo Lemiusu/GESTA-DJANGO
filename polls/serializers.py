@@ -11,6 +11,7 @@ from django.db.models import Sum, F, ExpressionWrapper, DecimalField, Q, Count
 from datetime import date
 
 
+
 # ─── HELPER ──────────────────────────────────────────────────────────────────
 
 from django.db.models import Sum, F, ExpressionWrapper, DecimalField, Q
@@ -77,7 +78,7 @@ class DashboardCoordinadorSerializer(serializers.Serializer):
             riesgo__in=['medio', 'alto']
         ).count()
 
-        hoy = timezone.now().date()
+        hoy = date.today()  # ← en lugar de timezone.now().date()
         detalles_hoy = DetalleAsistencia.objects.filter(
             registro_asistencia__fecha=hoy
         )
@@ -124,7 +125,7 @@ class DashboardCoordinadorSerializer(serializers.Serializer):
         return resultado
 
     def get_asistencia_hoy(self, obj):
-        hoy = timezone.now().date()
+        hoy = date.today()
         grados = Grado.objects.prefetch_related(
             'cursos__registros_asistencia__detalles__estudiante__usuario'
         ).all()

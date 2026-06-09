@@ -228,6 +228,7 @@ class AsistenciaRegistroView(APIView):
                 })
             resultado[curso.nombre] = {
                 'abierto': True,
+                'registrado': registro is not None,  # ← True solo si ya hay registro en BD
                 'estudiantes': estudiantes,
             }
         return Response(resultado)
@@ -621,7 +622,8 @@ class ObservacionesRecientesView(APIView):
         return Response([
             {
                 'id': o.id,
-                'estudiante': f'{o.estudiante.usuario.first_name} {o.estudiante.usuario.last_name}',
+                'nombre': f'{o.estudiante.usuario.first_name} {o.estudiante.usuario.last_name}',
+                'grado': o.estudiante.curso.grado.nombre if o.estudiante.curso and o.estudiante.curso.grado else None,
                 'tipo': o.get_tipo_display(),
                 'descripcion': o.descripcion,
                 'es_positiva': o.es_positiva,

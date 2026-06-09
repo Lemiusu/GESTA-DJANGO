@@ -155,7 +155,7 @@ function ContenidoCurso({ cursoId, nombreCurso, data, isMobile, onError, onSucce
     return init;
   });
   const [guardado, setGuardado] = useState(() =>
-    data.estudiantes.length > 0 && data.estudiantes.every(e => (e as any).estado != null)
+    (data as any).registrado === true
   );
   const [cargando, setCargando] = useState(false);
   const [modal,    setModal]    = useState(false);

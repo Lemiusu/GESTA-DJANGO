@@ -7,7 +7,7 @@ import {
   NAV_COORDINADOR, BOTTOM_NAV_COORDINADOR,
   isMobileWidth,
 } from "../../context/shared";
-import { coordinadorAPI, asistenciaAPI, observacionesAPI, estudiantesAPI } from "../../services/api";
+import { coordinadorAPI, asistenciaAPI, observacionesAPI, estudiantesAPI, alertasAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 
 /* ─── TIPOS ─────────────────────────────────────────────────────── */
@@ -84,9 +84,7 @@ function ContenidoEstadoGrados({ isMobile, gradosStats, estudiantesData }: { isM
     : gradosStats.filter(g => g.grado === gradoFiltro);
 
   function getEstudiantesGrado(gradoLabel: string) {
-    const prefijo = GRADO_PREFIJO[gradoLabel];
-    if (!prefijo) return [];
-    return estudiantesData.filter(e => e.grado.startsWith(prefijo));
+    return estudiantesData.filter(e => e.grado === gradoLabel);
   }
 
   function irAPerfil(estudianteId: number) {
@@ -367,9 +365,9 @@ function ContenidoAsistencia({ isMobile, asistenciaGrados, asistenciaEstudiantes
   );
 }
 
-function ContenidoAlertas({ isMobile }: { isMobile: boolean }) {
-  const { getAlertasActivas, resolverAlerta } = useGESTA();
-  const alertas = getAlertasActivas();
+// Cambia la firma del componente:
+function ContenidoAlertas({ isMobile, alertas }: { isMobile: boolean; alertas: any[] }) {
+  const { resolverAlerta } = useGESTA();
   if (alertas.length === 0) return (
     <div style={{ padding: "24px", textAlign: "center", color: C.gray400, fontSize: 13 }}>No hay alertas activas.</div>
   );
@@ -380,14 +378,12 @@ function ContenidoAlertas({ isMobile }: { isMobile: boolean }) {
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
             <Semaforo nivel="rojo" label="Activa" />
             <div>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.gray800 }}>{a.nombreEstudiante} · Grado {a.grado}</p>
-              <p style={{ margin: "2px 0 0", fontSize: 12, color: C.gray500 }}>{a.tipo} · {a.fecha}</p>
-              <p style={{ margin: "1px 0 0", fontSize: 11, color: C.gray400 }}>{a.motivo}</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.gray800 }}>{a.estudiante}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: C.gray500 }}>{a.titulo} · {a.generada_en}</p>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
             <button onClick={() => resolverAlerta(a.id)} style={S.btnSm}>Resolver</button>
-            <button style={S.btnPrimary}>Intervenir</button>
           </div>
         </div>
       ))}
@@ -459,6 +455,8 @@ export default function DashboardCoordinador() {
   // TODO: Reemplazar con coordinadorAPI.getDashboard() cuando el backend esté conectado
   const [asistenciaPromedio, setAsistenciaPromedio] = useState("");
 
+  const [alertasData, setAlertasData] = useState<any[]>([]);
+
   useEffect(() => {
     async function fetchEstadoGrados() {
       try {
@@ -475,7 +473,12 @@ export default function DashboardCoordinador() {
     async function fetchAsistenciaGrados() {
       try {
         const data = await asistenciaAPI.getAsistenciaGrados();
-        setAsistenciaGrados(data as AsistenciaGrado[]);
+        const gradosMapped: AsistenciaGrado[] = data.map((g: any) => {
+          const presentes = g.cursos.reduce((s: number, c: any) => s + (c.presentes || 0), 0);
+          const total = g.cursos.reduce((s: number, c: any) => s + (c.total || 0), 0);
+          return { grado: g.grado, presentes, total };
+        });
+        setAsistenciaGrados(gradosMapped);
       } catch (err) {
         console.warn("DashboardCoordinador: No se pudo cargar la asistencia por grados desde la API", err);
       }
@@ -486,16 +489,19 @@ export default function DashboardCoordinador() {
   useEffect(() => {
     async function fetchAsistenciaEstudiantes() {
       try {
-        const dash = await coordinadorAPI.getDashboard();
+        const data = await asistenciaAPI.getAsistenciaGrados();
         const mapped: Record<string, AsistenciaEstudiante[]> = {};
-        for (const g of dash.asistencia_hoy || []) {
+        for (const g of data) {
           const lista: AsistenciaEstudiante[] = [];
           for (const c of g.cursos || []) {
             for (const e of c.estudiantes || []) {
-              lista.push({ nombre: e.nombre, estado: e.estado });
+              lista.push({
+                nombre: e.nombre,
+                estado: e.estado === "P" ? "presente" : e.estado === "A" ? "ausente" : "justificado",
+              });
             }
           }
-          mapped[g.nombre] = lista;
+          mapped[g.grado] = lista;
         }
         setAsistenciaEstudiantes(mapped);
       } catch (err) {
@@ -521,6 +527,7 @@ export default function DashboardCoordinador() {
     async function fetchEstudiantes() {
       try {
         const data = await estudiantesAPI.getEstudiantes();
+        console.log("ESTUDIANTES:", data.slice(0, 3)); // ← ver primeros 3
         setEstudiantesData(data as EstudianteData[]);
       } catch (err) {
         console.warn("DashboardCoordinador: No se pudieron cargar los estudiantes desde la API", err);
@@ -541,6 +548,18 @@ export default function DashboardCoordinador() {
       }
     }
     fetchDashboard();
+  }, []);
+
+  useEffect(() => {
+    async function fetchAlertas() {
+      try {
+        const data = await alertasAPI.getAlertasActivas();
+        setAlertasData(data);
+      } catch (err) {
+        console.warn("DashboardCoordinador: No se pudieron cargar las alertas", err);
+      }
+    }
+    fetchAlertas();
   }, []);
   const alertasActivas = getAlertasActivas().length;
   const noLeidos = getMensajesNoLeidos("coordinador");
@@ -612,7 +631,7 @@ export default function DashboardCoordinador() {
           </CardSeccion>
 
           <CardSeccion titulo="Alertas activas" sub={alertasActivas > 0 ? `${alertasActivas} alertas requieren atención` : "Sin alertas activas"} badgeVal={alertasActivas} badgeColor={C.red} abierto={secciones.alertas} onToggle={() => toggle("alertas")} irA={() => ir("mensajes-coordinador")} labelIr="Ver todas →" isMobile={isMobile}>
-            <ContenidoAlertas isMobile={isMobile} />
+            <ContenidoAlertas isMobile={isMobile} alertas={alertasData} />
           </CardSeccion>
 
           <CardSeccion titulo="Observaciones recientes" sub={`${observacionesRecientes.length} nuevas observaciones`} badgeVal={observacionesRecientes.length} badgeColor={C.blueText} abierto={secciones.observaciones} onToggle={() => toggle("observaciones")} irA={() => ir("observador-coordinador")} labelIr="Ver observador →" isMobile={isMobile}>
